@@ -18,6 +18,7 @@
 
 #include "gls_image.hpp"
 #include "gls_tiff_metadata.hpp"
+#include "gls_linalg.hpp"
 
 enum BayerPattern {
     grbg = 0,
@@ -26,14 +27,28 @@ enum BayerPattern {
     bggr = 3
 };
 
+typedef struct DemosaicParameters {
+    float contrast;
+    float saturation;
+    float toneCurveSlope;
+    float sharpening;
+    float sharpeningRadius;
+    float chromaDenoiseThreshold;
+    float lumaDenoiseThreshold;
+    float denoiseRadius;
+} DemosaicParameters;
+
+void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);
+
 void interpolateGreen(const gls::image<gls::luma_pixel_16>& rawImage,
                       gls::image<gls::rgb_pixel_16>* rgbImage, BayerPattern bayerPattern);
 
 void interpolateRedBlue(gls::image<gls::rgb_pixel_16>* image, BayerPattern bayerPattern);
 
-gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage,
+gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls::luma_pixel_16>& rawImage,
                                                         gls::tiff_metadata* metadata, bool auto_white_balance);
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicImageGPU(const gls::image<gls::luma_pixel_16>& rawImage,
-                                                         gls::tiff_metadata* metadata, bool auto_white_balance);
+gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage,
+                                                      gls::tiff_metadata* metadata, const DemosaicParameters& parameters,
+                                                      bool auto_white_balance);
 #endif /* demosaic_hpp */

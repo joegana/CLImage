@@ -581,8 +581,8 @@ void unpackRawMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
     printf("scale_mul: %f, %f, %f, %f\n", (*scale_mul)[0], (*scale_mul)[1], (*scale_mul)[2], (*scale_mul)[3]);
 }
 
-gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage,
-                                                        gls::tiff_metadata* metadata, bool auto_white_balance) {
+gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls::luma_pixel_16>& rawImage,
+                                                           gls::tiff_metadata* metadata, bool auto_white_balance) {
     BayerPattern bayerPattern;
     float black_level;
     gls::Vector<4> scale_mul;
@@ -623,147 +623,140 @@ gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImage(const gls::image<gls::lu
     return rgbImage;
 }
 
-int scaleRawData(gls::OpenCLContext* glsContext,
+/*
+ OpenCL RAW Image Demosaic.
+ NOTE: This code can throw exceptions, to facilitate debugging no exception handler is provided, so things can crash in place.
+ */
+
+void scaleRawData(gls::OpenCLContext* glsContext,
                  const gls::cl_image_2d<gls::luma_pixel_16>& rawImage,
                  gls::cl_image_2d<gls::luma_pixel_float>* scaledRawImage,
                  BayerPattern bayerPattern, gls::Vector<4> scaleMul, float blackLevel) {
-    try {
-        // Load the shader source
-        const auto program = glsContext->loadProgram("demosaic");
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
 
-        // Bind the kernel parameters
-        auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
-                                        cl::Image2D,  // scaledRawImage
-                                        int,          // bayerPattern
-                                        cl::Buffer,   // scaleMul
-                                        float         // blackLevel
-                                        >(program, "scaleRawData");
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
+                                    cl::Image2D,  // scaledRawImage
+                                    int,          // bayerPattern
+                                    cl::Buffer,   // scaleMul
+                                    float         // blackLevel
+                                    >(program, "scaleRawData");
 
-        cl::Buffer scaleMulBuffer(scaleMul.begin(), scaleMul.end(), true);
+    cl::Buffer scaleMulBuffer(scaleMul.begin(), scaleMul.end(), true);
 
-        // Work on one Quad (2x2) at a time
-        kernel(gls::OpenCLContext::buildEnqueueArgs(scaledRawImage->width/2, scaledRawImage->height/2),
-               rawImage.getImage2D(), scaledRawImage->getImage2D(), bayerPattern, scaleMulBuffer, blackLevel);
-        return 0;
-    } catch (cl::Error& err) {
-        LOG_ERROR(TAG) << "Caught Exception: " << std::string(err.what()) << " - " << gls::clStatusToString(err.err())
-                       << std::endl;
-        return -1;
-    }
+    // Work on one Quad (2x2) at a time
+    kernel(gls::OpenCLContext::buildEnqueueArgs(scaledRawImage->width/2, scaledRawImage->height/2),
+           rawImage.getImage2D(), scaledRawImage->getImage2D(), bayerPattern, scaleMulBuffer, blackLevel);
 }
 
-int interpolateGreen(gls::OpenCLContext* glsContext,
+void interpolateGreen(gls::OpenCLContext* glsContext,
                      const gls::cl_image_2d<gls::luma_pixel_float>& rawImage,
                      gls::cl_image_2d<gls::luma_pixel_float>* greenImage,
                      BayerPattern bayerPattern) {
-    try {
-        // Load the shader source
-        const auto program = glsContext->loadProgram("demosaic");
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
 
-        // Bind the kernel parameters
-        auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
-                                        cl::Image2D,  // greenImage
-                                        int           // bayerPattern
-                                        >(program, "interpolateGreen");
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
+                                    cl::Image2D,  // greenImage
+                                    int           // bayerPattern
+                                    >(program, "interpolateGreen");
 
-        // Schedule the kernel on the GPU
-        kernel(gls::OpenCLContext::buildEnqueueArgs(greenImage->width, greenImage->height),
-               rawImage.getImage2D(), greenImage->getImage2D(), bayerPattern);
-        return 0;
-    } catch (cl::Error& err) {
-        LOG_ERROR(TAG) << "Caught Exception: " << std::string(err.what()) << " - " << gls::clStatusToString(err.err())
-                       << std::endl;
-        return -1;
-    }
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(greenImage->width, greenImage->height),
+           rawImage.getImage2D(), greenImage->getImage2D(), bayerPattern);
 }
 
-int interpolateRedBlue(gls::OpenCLContext* glsContext,
+void interpolateRedBlue(gls::OpenCLContext* glsContext,
                        const gls::cl_image_2d<gls::luma_pixel_float>& rawImage,
                        const gls::cl_image_2d<gls::luma_pixel_float>& greenImage,
                        gls::cl_image_2d<gls::rgba_pixel_float>* rgbImage,
                        BayerPattern bayerPattern) {
-    try {
-        // Load the shader source
-        const auto program = glsContext->loadProgram("demosaic");
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
 
-        // Bind the kernel parameters
-        auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
-                                        cl::Image2D,  // greenImage
-                                        cl::Image2D,  // rgbImage
-                                        int           // bayerPattern
-                                        >(program, "interpolateRedBlue");
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
+                                    cl::Image2D,  // greenImage
+                                    cl::Image2D,  // rgbImage
+                                    int           // bayerPattern
+                                    >(program, "interpolateRedBlue");
 
-        // Schedule the kernel on the GPU
-        kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
-               rawImage.getImage2D(), greenImage.getImage2D(), rgbImage->getImage2D(), bayerPattern);
-        return 0;
-    } catch (cl::Error& err) {
-        LOG_ERROR(TAG) << "Caught Exception: " << std::string(err.what()) << " - " << gls::clStatusToString(err.err())
-                       << std::endl;
-        return -1;
-    }
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
+           rawImage.getImage2D(), greenImage.getImage2D(), rgbImage->getImage2D(), bayerPattern);
 }
 
-int applyKernel(gls::OpenCLContext* glsContext, const std::string& programName, const std::string& kernelName,
+void applyKernel(gls::OpenCLContext* glsContext, const std::string& programName, const std::string& kernelName,
                 const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
                 gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
-    try {
-        // Load the shader source
-        const auto program = glsContext->loadProgram(programName);
+    // Load the shader source
+    const auto program = glsContext->loadProgram(programName);
 
-        // Bind the kernel parameters
-        auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
-                                        cl::Image2D   // outputImage
-                                        >(program, kernelName);
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
+                                    cl::Image2D   // outputImage
+                                    >(program, kernelName);
 
-        // Schedule the kernel on the GPU
-        kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-               inputImage.getImage2D(), outputImage->getImage2D());
-        return 0;
-    } catch (cl::Error& err) {
-        LOG_ERROR(TAG) << "Caught Exception: " << std::string(err.what()) << " - " << gls::clStatusToString(err.err())
-                       << std::endl;
-        return -1;
-    }
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+           inputImage.getImage2D(), outputImage->getImage2D());
 }
 
-int convertTosRGB(gls::OpenCLContext* glsContext,
+void denoiseImage(gls::OpenCLContext* glsContext,
+                  const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                  float lumaSigmaR, float chromaSigmaR, float radius,
+                  gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
+                                    float,        // lumaSigmaR
+                                    float,        // chromaSigmaR
+                                    float,        // radius,
+                                    cl::Image2D   // outputImage
+                                    >(program, "denoiseImage");
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+           inputImage.getImage2D(), lumaSigmaR, chromaSigmaR, radius, outputImage->getImage2D());
+}
+
+void convertTosRGB(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::rgba_pixel_float>& linearImage,
                   gls::cl_image_2d<gls::rgba_pixel>* rgbImage,
-                  const gls::Matrix<3, 3>& transform) {
-    try {
-        // Load the shader source
-        const auto program = glsContext->loadProgram("demosaic");
+                  const gls::Matrix<3, 3>& transform, const DemosaicParameters& demosaicParameters) {
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
 
-        // float4 transform[3];
-        gls::Matrix<3, 4> paddedTransform;
-        for (int r = 0; r < 3; r++) {
-            for (int c = 0; c < 3; c++) {
-                paddedTransform[r][c] = transform[r][c];
-            }
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // linearImage
+                                    cl::Image2D,  // rgbImage
+                                    cl::Buffer,   // transform
+                                    cl::Buffer    // demosaicParameters
+                                    >(program, "convertTosRGB");
+
+    // parameter "constant float3 transform[3]". NOTE: float3 are mapped in memory as float4
+    std::array<std::array<float, 4>, 3> paddedTransform;
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) {
+            paddedTransform[r][c] = transform[r][c];
         }
-
-        cl::Buffer transformBuffer(paddedTransform.span().begin(), paddedTransform.span().end(), true);
-
-        // Bind the kernel parameters
-        auto kernel = cl::KernelFunctor<cl::Image2D,  // linearImage
-                                        cl::Image2D,  // rgbImage
-                                        cl::Buffer    // transform
-                                        >(program, "convertTosRGB");
-
-        // Schedule the kernel on the GPU
-        kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
-               linearImage.getImage2D(), rgbImage->getImage2D(), transformBuffer);
-        return 0;
-    } catch (cl::Error& err) {
-        LOG_ERROR(TAG) << "Caught Exception: " << std::string(err.what()) << " - " << gls::clStatusToString(err.err())
-                       << std::endl;
-        return -1;
     }
+    cl::Buffer transformBuffer(paddedTransform.begin(), paddedTransform.end(), true);
+
+    // parameter "constant DemosaicParameters *demosaicParameters".
+    cl::Buffer demosaicParametersBuffer(glsContext->clContext(), CL_MEM_USE_HOST_PTR, sizeof(DemosaicParameters), (void *) &demosaicParameters);
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
+           linearImage.getImage2D(), rgbImage->getImage2D(), transformBuffer, demosaicParametersBuffer);
 }
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicImageGPU(const gls::image<gls::luma_pixel_16>& rawImage,
-                                                         gls::tiff_metadata* metadata, bool auto_white_balance) {
+gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
+                                                      const DemosaicParameters& demosaicParameters, bool auto_white_balance) {
     BayerPattern bayerPattern;
     float black_level;
     gls::Vector<4> scale_mul;
@@ -792,17 +785,14 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImageGPU(const gls::image<gls::l
     applyKernel(&glsContext, "demosaic", "rgbToYCbCrImage", clLinearRGBImage, &clLinearRGBImage);
 
     gls::cl_image_2d<gls::rgba_pixel_float> clDenoisedRGBImage(clContext, rawImage.width, rawImage.height);
-    applyKernel(&glsContext, "demosaic", "denoiseImage", clLinearRGBImage, &clDenoisedRGBImage);
-
-    // applyKernel(&glsContext, "sharpenLumaImage", clDenoisedRGBImage, &clLinearRGBImage);
+    denoiseImage(&glsContext, clLinearRGBImage,
+                 demosaicParameters.lumaDenoiseThreshold, demosaicParameters.chromaDenoiseThreshold, demosaicParameters.denoiseRadius,
+                 &clDenoisedRGBImage);
 
     applyKernel(&glsContext, "demosaic", "yCbCrtoRGBImage", clDenoisedRGBImage, &clDenoisedRGBImage);
 
-//    gls::cl_image_2d<gls::rgba_pixel_16> clSharpenedRGBImage(clContext, rawImage.width, rawImage.height);
-//    sharpenImage(&glsContext, clDenoisedRGBImage, &clSharpenedRGBImage);
-
     gls::cl_image_2d<gls::rgba_pixel> clsRGBImage(clContext, rawImage.width, rawImage.height);
-    convertTosRGB(&glsContext, clDenoisedRGBImage, &clsRGBImage, rgb_cam);
+    convertTosRGB(&glsContext, clDenoisedRGBImage, &clsRGBImage, rgb_cam, demosaicParameters);
 
     auto rgbaImage = clsRGBImage.toImage();
 

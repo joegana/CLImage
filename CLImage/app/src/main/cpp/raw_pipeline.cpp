@@ -28,71 +28,152 @@
 
 static const char* TAG = "RawPipeline Test";
 
-inline uint16_t clamp(int x) { return x < 0 ? 0 : x > 0xffff ? 0xffff : x; }
+gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesystem::path& input_path) {
+    const DemosaicParameters demosaicParameters = {
+        .contrast = 1.05,
+        .saturation = 1.0,
+        .toneCurveSlope = 3.5,
+        .sharpening = 1.25,
+        .sharpeningRadius = 7,
+        .chromaDenoiseThreshold = 0.005,
+        .lumaDenoiseThreshold = 0.0005,
+        .denoiseRadius = 7,
+    };
 
-inline uint8_t clamp8(int x) { return x < 0 ? 0 : x > 0xff ? 0xff : x; }
+    gls::tiff_metadata metadata;
+    metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.0781, -0.4173, -0.0976, -0.0633, 0.9661, 0.0972, 0.0073, 0.1349, 0.3481 } });
+    // metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.001460, 1, 1 / 1.864002 } });
+    metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
+    metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 2, 1, 1, 0 } });
+    metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
+    metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
 
-// IMX492 M43-ish Sony Sensor
-void IMX492Metadata(gls::tiff_metadata *metadata) {
-    metadata->insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.0781, -0.4173, -0.0976, -0.0633, 0.9661, 0.0972, 0.0073, 0.1349, 0.3481 } });
-    metadata->insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.001460, 1, 1 / 1.864002 } });
-    metadata->insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
-    metadata->insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
-    metadata->insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
-    metadata->insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
-//    metadata->insert({ EXIFTAG_ISOSPEED, std::vector<uint16_t>{ 100 } });
-//    metadata->insert({ EXIFTAG_SHUTTERSPEEDVALUE, 1.0/100.0});
+//    metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.0781, -0.4173, -0.0976, -0.0633, 0.9661, 0.0972, 0.0073, 0.1349, 0.3481 } });
+//    metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.001460, 1, 1 / 1.864002 } });
+//    metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
+//    metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
+//    metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
+//    metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
+
+    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &metadata);
+
+    LOG_INFO(TAG) << "read inputImage of size: " << inputImage->width << " x " << inputImage->height << std::endl;
+
+    auto t_start = std::chrono::high_resolution_clock::now();
+
+    auto rgb_image = demosaicImage(*inputImage, &metadata, demosaicParameters, /*auto_white_balance=*/ false);
+
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+
+    LOG_INFO(TAG) << "GPU Pipeline Execution Time: " << elapsed_time_ms << " for image of size: " << inputImage->width << " x " << inputImage->height << std::endl;
+
+    return rgb_image;
 }
 
-// IMX571 APS-C Sony Sensor
-void IMX571Metadata(gls::tiff_metadata *metadata) {
-    metadata->insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 2.5251, -1.3908, -0.3936, -0.5996, 1.7697, -0.1700, 0.2232, -0.2430, 1.2527 } });
-    metadata->insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 0.572128, 1.000000, 1.313796 } });
-    metadata->insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
-    metadata->insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 2, 1, 1, 0 } });
-    metadata->insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
-    metadata->insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xffff } });
+gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::path& input_path) {
+    const DemosaicParameters demosaicParameters = {
+        .contrast = 1.2,
+        .saturation = 1.0,
+        .toneCurveSlope = 3.5,
+        .sharpening = 1.25,
+        .sharpeningRadius = 7,
+        .chromaDenoiseThreshold = 0.005,
+        .lumaDenoiseThreshold = 0.0005,
+        .denoiseRadius = 7,
+    };
+
+    gls::tiff_metadata metadata;
+    metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.0781, -0.4173, -0.0976, -0.0633, 0.9661, 0.0972, 0.0073, 0.1349, 0.3481 } });
+    metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.001460, 1, 1 / 1.864002 } });
+    metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
+    metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
+    metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
+    metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
+
+    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &metadata);
+
+    LOG_INFO(TAG) << "read inputImage of size: " << inputImage->width << " x " << inputImage->height << std::endl;
+
+    auto t_start = std::chrono::high_resolution_clock::now();
+
+    auto rgb_image = demosaicImage(*inputImage, &metadata, demosaicParameters, /*auto_white_balance=*/ true);
+
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+
+    LOG_INFO(TAG) << "GPU Pipeline Execution Time: " << elapsed_time_ms << " for image of size: " << inputImage->width << " x " << inputImage->height << std::endl;
+
+    return rgb_image;
 }
 
-static float sigmoid(float x, float s) {
-    return 0.5 * (tanh(s * x - 0.3 * s) + 1);
+gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492PNG(const std::filesystem::path& input_path) {
+    const DemosaicParameters demosaicParameters = {
+        .contrast = 1.05,
+        .saturation = 1.0,
+        .toneCurveSlope = 3.5,
+        .sharpening = 1.25,
+        .sharpeningRadius = 7,
+        .chromaDenoiseThreshold = 0.005,
+        .lumaDenoiseThreshold = 0.0005,
+        .denoiseRadius = 7,
+    };
+
+    gls::tiff_metadata metadata;
+    metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.0781, -0.4173, -0.0976, -0.0633, 0.9661, 0.0972, 0.0073, 0.1349, 0.3481 } });
+    metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.001460, 1, 1 / 1.864002 } });
+    metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
+    metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
+    metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
+    metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
+
+    const auto inputImage = gls::image<gls::luma_pixel_16>::read_png_file(input_path.string());
+
+    LOG_INFO(TAG) << "read inputImage of size: " << inputImage->width << " x " << inputImage->height << std::endl;
+
+    auto t_start = std::chrono::high_resolution_clock::now();
+
+    auto rgb_image = demosaicImage(*inputImage, &metadata, demosaicParameters, /*auto_white_balance=*/ false);
+
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+
+    LOG_INFO(TAG) << "GPU Pipeline Execution Time: " << elapsed_time_ms << " for image of size: " << inputImage->width << " x " << inputImage->height << std::endl;
+
+    return rgb_image;
 }
 
-static float toneCurve(float x) {
-    float s = 3.5;
-    return (sigmoid(pow(x, 1/2.2), s) - sigmoid(0, s)) / (sigmoid(1, s) - sigmoid(0, s));
-}
+gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::path& input_path) {
+    const DemosaicParameters demosaicParameters = {
+        .contrast = 1.05,
+        .saturation = 1.0,
+        .toneCurveSlope = 3.5,
+        .sharpening = 1.25,
+        .sharpeningRadius = 5,
+        .chromaDenoiseThreshold = 0.005,
+        .lumaDenoiseThreshold = 0.0005,
+        .denoiseRadius = 5,
+    };
 
-gls::image<gls::rgb_pixel>::unique_ptr applyToneCurve(const gls::image<gls::rgb_pixel_16>& image) {
-    auto output_image = std::make_unique<gls::image<gls::rgb_pixel>>(image.width, image.height);
+    gls::tiff_metadata metadata;
+    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &metadata);
 
-    int max_val = 0;
-    int max_out = 0;
-    for (int y = 0; y < image.height; y++) {
-        for (int x = 0; x < image.width; x++) {
-            const gls::rgb_pixel_16 &p = image[y][x];
+    LOG_INFO(TAG) << "read inputImage of size: " << inputImage->width << " x " << inputImage->height << std::endl;
 
-            auto maxp = std::max(p.red, std::max(p.red, p.blue));
-            if (maxp > max_val) {
-                max_val = maxp;
-            }
+    auto t_start = std::chrono::high_resolution_clock::now();
 
-            auto op = (*output_image)[y][x] = {
-                clamp8(0xff * toneCurve(0.8 * p[0] / (float) 0xffff)),
-                clamp8(0xff * toneCurve(0.8 * p[1] / (float) 0xffff)),
-                clamp8(0xff * toneCurve(0.8 * p[2] / (float) 0xffff))
-            };
+    auto rgb_image = demosaicImage(*inputImage, &metadata, demosaicParameters, /*auto_white_balance=*/ false);
 
-            auto maxop = std::max(op.red, std::max(op.red, op.blue));
-            if (maxop > max_out) {
-                max_out = maxop;
-            }
-        }
-    }
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
 
-    printf("max_val: %d, max_out: %d, tc(1): %f\n", max_val, max_out, toneCurve(1.0));
+    LOG_INFO(TAG) << "GPU Pipeline Execution Time: " << elapsed_time_ms << " for image of size: " << inputImage->width << " x " << inputImage->height << std::endl;
 
-    return output_image;
+    // Write out a stripped DNG files with minimal metadata
+    auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
+    inputImage->write_dng_file(output_file, /*compression=*/ gls::JPEG, &metadata);
+
+    return rgb_image;
 }
 
 int main(int argc, const char* argv[]) {
@@ -103,47 +184,8 @@ int main(int argc, const char* argv[]) {
 
         LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
 
-        gls::tiff_metadata metadata;
-        const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &metadata);
+        const auto rgb_image = demosaicIMX492DNG(input_path);
 
-        // inputImage->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_raw.png");
-
-//        gls::tiff_metadata metadata;
-//        IMX492Metadata(&metadata);
-//        const auto inputImage = gls::image<gls::luma_pixel_16>::read_png_file(input_path.string());
-
-//        for (auto& p : inputImage->pixels()) {
-//            p = gls::luma_pixel_16 {
-//                (uint16_t) (p[0] >> 4)
-//            };
-//        }
-
-        LOG_INFO(TAG) << "read inputImage of size: " << inputImage->width << " x " << inputImage->height << std::endl;
-
-        auto t_start = std::chrono::high_resolution_clock::now();
-
-        const bool useGPU = true;
-        if (useGPU) {
-            const auto rgb_image = demosaicImageGPU(*inputImage, &metadata, /*auto_white_balance=*/ true);
-
-            auto t_end = std::chrono::high_resolution_clock::now();
-            double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
-
-            LOG_INFO(TAG) << "GPU Pipeline Execution Time: " << elapsed_time_ms << std::endl;
-            rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
-        } else {
-            const auto rgb_image = demosaicImage(*inputImage, &metadata, /*auto_white_balance=*/ true);
-            auto output_image = applyToneCurve(*rgb_image);
-            LOG_INFO(TAG) << "...done with demosaicing (CPU)." << std::endl;
-
-            auto t_end = std::chrono::high_resolution_clock::now();
-            double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
-
-            LOG_INFO(TAG) << "CPU Pipeline Execution Time: " << elapsed_time_ms << std::endl;
-            output_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png");
-        }
-
-        auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
-        inputImage->write_dng_file(output_file, /*compression=*/ gls::JPEG, &metadata);
+        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
     }
 }

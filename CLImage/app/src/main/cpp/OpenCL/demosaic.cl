@@ -36,18 +36,20 @@ constant const int2 bayerOffsets[4][4] = {
     defined(__QCOMM_QGPU_A7V__) || \
     defined(__QCOMM_QGPU_A7P__)
 
+// Qualcomm's smoothstep implementation can be really slow...
+
 #define _fabs(a) \
    ({ __typeof__ (a) _a = (a); \
      _a >= 0 ? _a : - _a; })
 
 #define _fmax(a, b) \
    ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
+      __typeof__ (b) _b = (b); \
      _a > _b ? _a : _b; })
 
 #define _fmin(a, b) \
    ({ __typeof__ (a) _a = (a); \
-       __typeof__ (b) _b = (b); \
+      __typeof__ (b) _b = (b); \
      _a < _b ? _a : _b; })
 
 #define _clamp(x, minval, maxval) \
@@ -62,13 +64,12 @@ constant const int2 bayerOffsets[4][4] = {
       __typeof__ (a) _a = (a); \
       _x + (_y - _x) * _a; })
 
-// Qualcomm's default implementation of smoothstep can be really slow...
-
 #define _smoothstep(a, b, x) \
    ({ __typeof__ (a) _a = (a); \
       __typeof__ (b) _b = (b); \
       __typeof__ (x) _x = (x), t; \
-      t = _clamp(_x * (1 / (_b - _a)) - (_a / (_b - _a)), 0, 1); t * t * (3 - 2 * t); })
+      t = _clamp(_x * (1 / (_b - _a)) - (_a / (_b - _a)), 0, 1); \
+      t * t * (3 - 2 * t); })
 
 #define fabs _fabs
 #define fmax _fmax
@@ -197,7 +198,6 @@ kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t
             float c2_bottom_right = g_bottom_right - read_imagef(rawImage, (int2)(x + 1, y + 1)).x;
 
             float2 dc = (float2) (fabs(c2_top_left - c2_bottom_right), fabs(c2_top_right - c2_bottom_left));
-
             float alpha = length(dc) > 0.01 ? atan2(dc.y, dc.x) / M_PI_2_F : 0.5;
             float c2 = green - mix((c2_top_right + c2_bottom_left) / 2,
                                    (c2_top_left + c2_bottom_right) / 2, alpha);
@@ -300,15 +300,12 @@ kernel void yCbCrtoRGBImage(read_only image2d_t inputImage, write_only image2d_t
     write_imagef(outputImage, imageCoordinates, (float4) (outputPixel, 0.0));
 }
 
-float3 denoiseLumaChroma(float3 inputValue, image2d_t inputImage, int2 imageCoordinates) {
-    float3 filtered_pixel = 0;
-    float3 kernel_norm = 0;
-    const int filterSize = 7;
-    const float lumaSigmaR = 0.0005;
-    const float chromaSigmaR = 0.005;
-
+float3 denoiseLumaChroma(float lumaSigmaR, float chromaSigmaR, float radius, image2d_t inputImage, int2 imageCoordinates) {
     const float3 inputYCC = read_imagef(inputImage, imageCoordinates).xyz;
 
+    float3 filtered_pixel = 0;
+    float3 kernel_norm = 0;
+    const int filterSize = (int) radius;
     for (int y = -filterSize / 2; y <= filterSize / 2; y++) {
         for (int x = -filterSize / 2; x <= filterSize / 2; x++) {
             float3 inputSampleYCC = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
@@ -326,13 +323,44 @@ float3 denoiseLumaChroma(float3 inputValue, image2d_t inputImage, int2 imageCoor
     return filtered_pixel / kernel_norm;
 }
 
-kernel void denoiseImage(read_only image2d_t inputImage, write_only image2d_t denoisedImage) {
+kernel void denoiseImage(read_only image2d_t inputImage, float lumaSigmaR, float chromaSigmaR, float radius, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float3 inputPixel = read_imagef(inputImage, imageCoordinates).xyz;
-    float3 denoisedPixel = denoiseLumaChroma(inputPixel, inputImage, imageCoordinates);
+    float3 denoisedPixel = denoiseLumaChroma(lumaSigmaR, chromaSigmaR, radius, inputImage, imageCoordinates);
 
     write_imagef(denoisedImage, imageCoordinates, (float4) (denoisedPixel, 0.0));
+}
+
+/// ---- Image Sharpening ----
+
+float3 gaussianBlur(float radius, image2d_t inputImage, int2 imageCoordinates) {
+    const int kernelSize = (int) radius;
+    const float sigmaS = (float) radius / 3.0;
+
+    float3 blurred_pixel = 0;
+    float3 kernel_norm = 0;
+    for (int y = -kernelSize / 2; y <= kernelSize / 2; y++) {
+        for (int x = -kernelSize / 2; x <= kernelSize / 2; x++) {
+            float kernelWeight = native_exp(-((float)(x * x + y * y) / (2 * sigmaS * sigmaS)));
+            blurred_pixel += kernelWeight * read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
+            kernel_norm += kernelWeight;
+        }
+    }
+    return blurred_pixel / kernel_norm;
+}
+
+float3 sharpen(float3 pixel_value, float amount, float radius, image2d_t inputImage, int2 imageCoordinates) {
+    float3 dx = read_imagef(inputImage, imageCoordinates + (int2)(1, 0)).xyz - pixel_value;
+    float3 dy = read_imagef(inputImage, imageCoordinates + (int2)(0, 1)).xyz - pixel_value;
+
+    // Smart sharpening
+    float3 sharpening = amount * smoothstep(0.0, 0.03, length(dx) + length(dy))     // Gradient magnitude thresholding
+                               * (1.0 - smoothstep(0.95, 1.0, pixel_value))         // Highlight ringing protection
+                               * (0.6 + 0.4 * smoothstep(0.0, 0.1, pixel_value));   // Shadows ringing protection
+
+    float3 blurred_pixel = gaussianBlur(radius, inputImage, imageCoordinates);
+
+    return mix(blurred_pixel, pixel_value, fmax(sharpening, 1.0));
 }
 
 /// ---- Tone Curve ----
@@ -344,8 +372,7 @@ float3 sigmoid(float3 x, float s) {
 // This tone curve is designed to mostly match the default curve from DNG files
 // TODO: it would be nice to have separate control on highlights and shhadows contrast
 
-float3 toneCurve(float3 x) {
-    float s = 3.5;
+float3 toneCurve(float3 x, float s) {
     return (sigmoid(native_powr(0.95 * x, 0.5), s) - sigmoid(0, s)) / (sigmoid(1, s) - sigmoid(0, s));
 }
 
@@ -362,100 +389,32 @@ float3 contrastBoost(float3 value, float contrast) {
     return mix(gray, value, mix(contrast, 1.0, clipping));
 }
 
-float3 gaussianBlur(image2d_t inputImage, int2 imageCoordinates) {
-    // Compute a blurred version of the image
-    float3 blurred_pixel = 0;
-    float3 kernel_norm = 0;
-    const int filterSize = 7;
-    const float sigmaS = (float) filterSize / 3.0;
-    for (int y = -filterSize / 2; y <= filterSize / 2; y++) {
-        for (int x = -filterSize / 2; x <= filterSize / 2; x++) {
-            float kernelWeight = native_exp(-((float)(x * x + y * y) / (2 * sigmaS * sigmaS)));
-            blurred_pixel += kernelWeight * read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
-            kernel_norm += kernelWeight;
-        }
-    }
-    return blurred_pixel / kernel_norm;
-}
-
-float gaussianBlurLuma(image2d_t inputImage, int2 imageCoordinates) {
-    // Compute a blurred version of the image
-    float blurred_pixel = 0;
-    float kernel_norm = 0;
-    const int filterSize = 7;
-    const float sigmaS = (float) filterSize / 3.0;
-    for (int y = -filterSize / 2; y <= filterSize / 2; y++) {
-        for (int x = -filterSize / 2; x <= filterSize / 2; x++) {
-            float kernelWeight = native_exp(-((float)(x * x + y * y) / (2 * sigmaS * sigmaS)));
-            blurred_pixel += kernelWeight * read_imagef(inputImage, imageCoordinates + (int2)(x, y)).x;
-            kernel_norm += kernelWeight;
-        }
-    }
-    return blurred_pixel / kernel_norm;
-}
-
-float3 sharpen(float3 pixel_value, image2d_t inputImage, int2 imageCoordinates) {
-    float3 dx = read_imagef(inputImage, imageCoordinates + (int2)(1, 0)).xyz - pixel_value;
-    float3 dy = read_imagef(inputImage, imageCoordinates + (int2)(0, 1)).xyz - pixel_value;
-
-    const float amount = 1.5;
-
-    // Smart sharpening
-    float3 sharpening = amount * smoothstep(0.0, 0.03, length(dx) + length(dy))       // Gradient magnitude thresholding
-                               * (1.0 - smoothstep(0.95, 1.0, pixel_value))          // Highlight ringing protection
-                               * (0.6 + 0.4 * smoothstep(0.0, 0.1, pixel_value));   // Shadows ringing protection
-
-    float3 blurred_pixel = gaussianBlur(inputImage, imageCoordinates);
-
-    return mix(blurred_pixel, pixel_value, fmax(sharpening, 1.0));
-}
-
-float3 sharpenLuma(image2d_t inputImage, int2 imageCoordinates) {
-    float3 inputPixel = read_imagef(inputImage, imageCoordinates).xyz;
-
-    float dx = read_imagef(inputImage, imageCoordinates + (int2)(1, 0)).x - inputPixel.x;
-    float dy = read_imagef(inputImage, imageCoordinates + (int2)(0, 1)).x - inputPixel.x;
-
-    const float amount = 1.5;
-
-    // Smart sharpening
-    float sharpening = amount * smoothstep(0.0, 0.03, length(dx) + length(dy))       // Gradient magnitude thresholding
-                              * (1.0 - smoothstep(0.95, 1.0, inputPixel.x))         // Highlight ringing protection
-                              * (0.6 + 0.4 * smoothstep(0.0, 0.1, inputPixel.x));  // Shadows ringing protection
-
-    float blurred_pixel = gaussianBlurLuma(inputImage, imageCoordinates);
-
-    return (float3) (mix(blurred_pixel, inputPixel.x, fmax(sharpening, 1.0)), inputPixel.yz);
-}
-
-kernel void sharpenImage(read_only image2d_t inputImage, write_only image2d_t sharpenedImage) {
-    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
-
-    float3 inputPixel = read_imagef(inputImage, imageCoordinates).xyz;
-    float3 sharpenedPixel = sharpen(inputPixel, inputImage, imageCoordinates);
-
-    write_imagef(sharpenedImage, imageCoordinates, (float4) (sharpenedPixel, 0.0));
-}
-
-kernel void sharpenLumaImage(read_only image2d_t inputImage, write_only image2d_t sharpenedImage) {
-    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
-
-    float3 sharpenedPixel = sharpenLuma(inputImage, imageCoordinates);
-
-    write_imagef(sharpenedImage, imageCoordinates, (float4) (sharpenedPixel, 0.0));
-}
+// Make sure this struct is in sync with the declaration in demosaic.hpp
+typedef struct DemosaicParameters {
+    float contrast;
+    float saturation;
+    float toneCurveSlope;
+    float sharpening;
+    float sharpeningRadius;
+    float chromaDenoiseThreshold;
+    float lumaDenoiseThreshold;
+    float denoiseRadius;
+} DemosaicParameters;
 
 kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t rgbImage,
-                          constant float3 transform[3]) {
+                          constant float3 transform[3], constant DemosaicParameters *demosaicParameters) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float3 linear = read_imagef(linearImage, imageCoordinates).xyz;
+    float3 pixel_value = read_imagef(linearImage, imageCoordinates).xyz;
 
-    linear = sharpen(linear, linearImage, imageCoordinates);
+    pixel_value = sharpen(pixel_value, demosaicParameters->sharpening, demosaicParameters->sharpeningRadius, linearImage, imageCoordinates);
 
-    linear = contrastBoost(linear, 1.2);
+    // pixel_value = saturationBoost(pixel_value, demosaicParameters->contrast);
+    pixel_value = contrastBoost(pixel_value, demosaicParameters->contrast);
 
-    float3 rgb = (float3) (dot(transform[0], linear), dot(transform[1], linear), dot(transform[2], linear));
+    float3 rgb = (float3) (dot(transform[0], pixel_value),
+                           dot(transform[1], pixel_value),
+                           dot(transform[2], pixel_value));
 
-    write_imagef(rgbImage, imageCoordinates, (float4) (toneCurve(clamp(rgb, 0.0, 1.0)), 0.0));
+    write_imagef(rgbImage, imageCoordinates, (float4) (toneCurve(clamp(rgb, 0.0, 1.0), demosaicParameters->toneCurveSlope), 0.0));
 }
