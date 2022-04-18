@@ -249,7 +249,7 @@ void write_tiff_file(const std::string& filename, int width, int height, int pix
     }
 }
 
-void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bit_depth, gls::tiff_metadata* metadata,
+void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bit_depth, gls::tiff_metadata* dng_metadata, gls::tiff_metadata* exif_metadata,
                     std::function<bool(int width, int height)> image_allocator,
                     std::function<void(int tiff_bitspersample, int tiff_samplesperpixel, int row, int strip_height,
                                        uint8_t *tiff_buffer)> process_tiff_strip) {
@@ -259,8 +259,8 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
                        [](TIFF *tif) { TIFFClose(tif); });
 
     if (tif) {
-        if (metadata) {
-            getAllTIFFTags(tif, metadata);
+        if (dng_metadata) {
+            getAllTIFFTags(tif, dng_metadata);
         }
 
         uint32_t subfileType = 0;
@@ -290,8 +290,8 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
                 printf("subfile %i, subfileType: %d\n", i, subfileType);
 
                 if ((subfileType & 1) == 0) {
-                    if (metadata) {
-                        getAllTIFFTags(tif, metadata);
+                    if (dng_metadata) {
+                        getAllTIFFTags(tif, dng_metadata);
                     }
                     break;
                 }
@@ -422,8 +422,9 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
                 }
             }
         }
-        if (metadata) {
-            getExifMetaData(tif, metadata);
+        if (exif_metadata) {
+            getExifMetaData(tif, exif_metadata);
+            std::cout << "Read " << exif_metadata->size() << " EXIF metadata entries." << std::endl;
         }
     } else {
         throw std::runtime_error("Couldn't read dng file.");
@@ -431,7 +432,8 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
 }
 
 void write_dng_file(const std::string& filename, int width, int height, int pixel_channels, int pixel_bit_depth,
-                    tiff_compression compression, tiff_metadata* metadata, std::function<uint16_t*(int row)> row_pointer) {
+                    tiff_compression compression, tiff_metadata* dng_metadata, tiff_metadata* exif_metadata,
+                    std::function<uint16_t*(int row)> row_pointer) {
     if (compression != COMPRESSION_NONE &&
         compression != COMPRESSION_JPEG &&
         compression != COMPRESSION_ADOBE_DEFLATE) {
@@ -462,25 +464,34 @@ void write_dng_file(const std::string& filename, int width, int height, int pixe
         TIFFSetField(tif, TIFFTAG_MAKE, "Glass");
         TIFFSetField(tif, TIFFTAG_UNIQUECAMERAMODEL, "Glass 1");
 
-        if (metadata) {
-            setMetadata(tif, metadata, TIFFTAG_DATETIME);
+        if (dng_metadata) {
+            setMetadata(tif, dng_metadata, TIFFTAG_DATETIME);
 
-            setMetadata(tif, metadata, TIFFTAG_CFAREPEATPATTERNDIM);
-            setMetadata(tif, metadata, TIFFTAG_CFAPATTERN);
+            setMetadata(tif, dng_metadata, TIFFTAG_CFAREPEATPATTERNDIM);
+            setMetadata(tif, dng_metadata, TIFFTAG_CFAPATTERN);
 
-            setMetadata(tif, metadata, TIFFTAG_COLORMATRIX1);
-            setMetadata(tif, metadata, TIFFTAG_COLORMATRIX2);
-            setMetadata(tif, metadata, TIFFTAG_ASSHOTNEUTRAL);
+            setMetadata(tif, dng_metadata, TIFFTAG_COLORMATRIX1);
+            setMetadata(tif, dng_metadata, TIFFTAG_COLORMATRIX2);
+            setMetadata(tif, dng_metadata, TIFFTAG_ASSHOTNEUTRAL);
 
-            setMetadata(tif, metadata, TIFFTAG_CALIBRATIONILLUMINANT1);
-            setMetadata(tif, metadata, TIFFTAG_CALIBRATIONILLUMINANT2);
+            setMetadata(tif, dng_metadata, TIFFTAG_CALIBRATIONILLUMINANT1);
+            setMetadata(tif, dng_metadata, TIFFTAG_CALIBRATIONILLUMINANT2);
 
-            setMetadata(tif, metadata, TIFFTAG_BLACKLEVELREPEATDIM);
-            setMetadata(tif, metadata, TIFFTAG_BLACKLEVEL);
-            setMetadata(tif, metadata, TIFFTAG_WHITELEVEL);
+            setMetadata(tif, dng_metadata, TIFFTAG_BLACKLEVELREPEATDIM);
+            setMetadata(tif, dng_metadata, TIFFTAG_BLACKLEVEL);
+            setMetadata(tif, dng_metadata, TIFFTAG_WHITELEVEL);
 
-            setMetadata(tif, metadata, TIFFTAG_BAYERGREENSPLIT);
-            setMetadata(tif, metadata, TIFFTAG_BASELINEEXPOSURE);
+            setMetadata(tif, dng_metadata, TIFFTAG_BAYERGREENSPLIT);
+            setMetadata(tif, dng_metadata, TIFFTAG_BASELINEEXPOSURE);
+        }
+
+        if (exif_metadata) {
+            // Set dummy EXIF tag in original tiff-structure in order to reserve space for final dir_offset value,
+            // which is properly written at the end.
+            uint64_t dir_offset = 0;  // Zero, in case no Custom-IFD is written
+            if (!TIFFSetField(tif, TIFFTAG_EXIFIFD, dir_offset )) {
+                std::cerr << "Can't write TIFFTAG_EXIFIFD." << std::endl;
+            }
         }
 
         if (compression == COMPRESSION_JPEG) {
@@ -496,12 +507,26 @@ void write_dng_file(const std::string& filename, int width, int height, int pixe
             if (TIFFWriteRawStrip(tif, 0, outputBuffer.data(), out_stream.Position()) < 0) {
                 throw std::runtime_error("Failed to write TIFF data.");
             }
-            printf("Wrote %ld compressed bytes\n", out_stream.Position());
+            std::cout << "Wrote " << out_stream.Position() << " compressed image bytes." << std::endl;
         } else {
             writeTiffImageData(tif, width, height, pixel_channels, pixel_bit_depth, row_pointer);
         }
 
+        // Write directory to file
         TIFFWriteDirectory(tif);
+
+        if (exif_metadata) {
+            if (TIFFCreateEXIFDirectory(tif) != 0) {
+                std::cerr << "TIFFCreateEXIFDirectory() failed." << std::endl;
+            } else {
+                std::cout << "Saving " << exif_metadata->size() << " EXIF metadata entries." << std::endl;
+                for (auto entry : *exif_metadata) {
+                    setMetadata(tif, exif_metadata, entry.first);
+                }
+                // Write directory to file
+                TIFFWriteDirectory(tif);
+            }
+        }
     } else {
         throw std::runtime_error("Couldn't open DNG file for writing.");
     }

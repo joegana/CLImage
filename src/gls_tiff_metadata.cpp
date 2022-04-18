@@ -17,7 +17,7 @@
 
 #include <iostream>
 
-#define DEBUG_TIFF_TAGS 1
+// #define DEBUG_TIFF_TAGS 1
 
 namespace gls {
 
@@ -198,35 +198,59 @@ void getExifMetaData(TIFF* tif, tiff_metadata* metadata) {
 }
 
 template <typename T>
-void setMetadata(TIFF* tif, const TIFFField* tf, const tiff_metadata_item& item) {
+void setMetadataItem(TIFF* tif, const TIFFField* tf, const tiff_metadata_item& item) {
     const auto writeCount = TIFFFieldWriteCount(tf);
+    uint32_t tag = TIFFFieldTag(tf);
     if (writeCount == 1) {
         const auto value = std::get<T>(item);
-        TIFFSetField(tif, TIFFFieldTag(tf), value);
+#ifdef DEBUG_TIFF_TAGS
+        std::cout << "Saving metadata scalar " << getFieldName(tf) << ": " << value << std::endl;
+#endif
+        if (!TIFFSetField(tif, tag, value)) {
+            std::cerr << "Can't write TIFF tag " << tag << " with value " << value << std::endl;
+        }
     } else {
-        const auto value = std::get<std::vector<T>>(item);
-        if (writeCount < 0) {
-            TIFFSetField(tif, TIFFFieldTag(tf), (uint16_t) value.size(), value.data());
-        } else {
-            if (writeCount != value.size()) {
-                throw std::runtime_error("Vector size mismatch, should be: " + std::to_string(writeCount) + ", got: " + std::to_string(value.size()));
+        const auto values = std::get<std::vector<T>>(item);
+#ifdef DEBUG_TIFF_TAGS
+        std::cout << "Saving metadata vector (" << values.size() << ") " << getFieldName(tf) << ": ";
+        for (int i = 0; i < values.size() && i < 10; i++) {
+            const auto& v = values[i];
+            if (sizeof(v) == 1) {
+                std::cout << (int) v;
+            } else {
+                std::cout << v;
             }
-            TIFFSetField(tif, TIFFFieldTag(tf), value.data());
+            if (i < 9 && i < values.size() - 1) {
+                std::cout << ", ";
+            } else if (i == 9 && i < values.size() - 1) {
+                std::cout << "...";
+            }
+        }
+        std::cout << std::endl;
+#endif
+        if (writeCount < 0) {
+            if (!TIFFSetField(tif, tag, (uint16_t) values.size(), values.data())) {
+                std::cerr << "Can't write TIFF tag " << tag << std::endl;
+            }
+        } else {
+            if (writeCount != values.size()) {
+                throw std::runtime_error("Vector size mismatch, should be: " + std::to_string(writeCount) + ", got: " + std::to_string(values.size()));
+            }
+            if (!TIFFSetField(tif, tag, values.data())) {
+                std::cerr << "Can't write tag " << tag << std::endl;
+            }
         }
     }
 }
 
 void setMetadataString(TIFF* tif, const TIFFField* tf, const tiff_metadata_item& item) {
     const auto string = std::get<std::string>(item);
-    const auto writeCount = TIFFFieldWriteCount(tf);
-    if (writeCount < 0) {
-        TIFFSetField(tif, TIFFFieldTag(tf), (uint16_t) string.size(), string.c_str());
-    } else {
-        const auto stringSize = string.size() + 1; // The string is null terminated
-        if (writeCount != stringSize) {
-            throw std::runtime_error("String size mismatch, should be: " + std::to_string(writeCount) + ", got: " + std::to_string(stringSize));
-        }
-        TIFFSetField(tif, TIFFFieldTag(tf), string.c_str());
+#ifdef DEBUG_TIFF_TAGS
+    std::cout << "Saving metadata string " << getFieldName(tf) << ": " << string << std::endl;
+#endif
+    uint32_t tag = TIFFFieldTag(tf);
+    if (!TIFFSetField(tif, tag, string.c_str())) {
+        std::cerr << "Can't write tag " << tag << " with data " << string << std::endl;
     }
 }
 
@@ -239,11 +263,11 @@ void setMetadata(TIFF* tif, tiff_metadata* metadata, ttag_t key) {
 
             switch (field_type) {
                 case TIFF_BYTE: {
-                    setMetadata<uint8_t>(tif, tf, entry->second);
+                    setMetadataItem<uint8_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_UNDEFINED: {
-                    setMetadata<uint8_t>(tif, tf, entry->second);
+                    setMetadataItem<uint8_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_ASCII: {
@@ -251,33 +275,33 @@ void setMetadata(TIFF* tif, tiff_metadata* metadata, ttag_t key) {
                     break;
                 }
                 case TIFF_SHORT: {
-                    setMetadata<uint16_t>(tif, tf, entry->second);
+                    setMetadataItem<uint16_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_LONG: {
-                    setMetadata<uint32_t>(tif, tf, entry->second);
+                    setMetadataItem<uint32_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_SBYTE: {
-                    setMetadata<int8_t>(tif, tf, entry->second);
+                    setMetadataItem<int8_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_SSHORT: {
-                    setMetadata<int16_t>(tif, tf, entry->second);
+                    setMetadataItem<int16_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_SLONG: {
-                    setMetadata<int32_t>(tif, tf, entry->second);
+                    setMetadataItem<int32_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_SRATIONAL:
                 case TIFF_RATIONAL:
                 case TIFF_FLOAT: {
-                    setMetadata<float>(tif, tf, entry->second);
+                    setMetadataItem<float>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_DOUBLE: {
-                    setMetadata<double>(tif, tf, entry->second);
+                    setMetadataItem<double>(tif, tf, entry->second);
                     break;
                 }
                 default:

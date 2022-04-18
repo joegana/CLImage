@@ -355,9 +355,9 @@ class image : public basic_image<T> {
     }
 
     // Image factory from DNG file
-    static unique_ptr read_dng_file(const std::string& filename, tiff_metadata* metadata = nullptr) {
+    static unique_ptr read_dng_file(const std::string& filename, tiff_metadata* dng_metadata = nullptr, tiff_metadata* exif_metadata = nullptr) {
         unique_ptr image = nullptr;
-        gls::read_dng_file(filename, T::channels, T::bit_depth, metadata,
+        gls::read_dng_file(filename, T::channels, T::bit_depth, dng_metadata, exif_metadata,
                             [&image](int width, int height) -> bool {
                                 return (image = std::make_unique<gls::image<T>>(width, height)) != nullptr;
                             },
@@ -370,11 +370,12 @@ class image : public basic_image<T> {
     }
 
     // Write image to DNG file
-    void write_dng_file(const std::string& filename, tiff_compression compression = tiff_compression::NONE, tiff_metadata* metadata = nullptr) const {
+    void write_dng_file(const std::string& filename, tiff_compression compression = tiff_compression::NONE,
+                        tiff_metadata* dng_metadata = nullptr, tiff_metadata* exif_metadata = nullptr) const {
         typedef typename T::dataType dataType;
         auto row_pointer = [this](int row) -> dataType* { return (dataType*)(*this)[row]; };
         gls::write_dng_file(filename, basic_image<T>::width, basic_image<T>::height, T::channels, T::bit_depth,
-                            compression, metadata, row_pointer);
+                            compression, dng_metadata, exif_metadata, row_pointer);
     }
 };
 

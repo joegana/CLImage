@@ -757,6 +757,8 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
                                                       const DemosaicParameters& demosaicParameters, bool auto_white_balance) {
+    auto t_start = std::chrono::high_resolution_clock::now();
+
     BayerPattern bayerPattern;
     float black_level;
     gls::Vector<4> scale_mul;
@@ -796,7 +798,10 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
 
     auto rgbaImage = clsRGBImage.toImage();
 
-    LOG_INFO(TAG) << "...done with demosaicing (GPU)." << std::endl;
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+
+    LOG_INFO(TAG) << "OpenCL Pipeline Execution Time: " << (int) elapsed_time_ms << "ms for image of size: " << rawImage.width << " x " << rawImage.height << std::endl;
 
     return rgbaImage;
 }
