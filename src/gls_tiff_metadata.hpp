@@ -32,13 +32,15 @@ typedef std::variant<uint8_t, uint16_t, uint32_t, int8_t, int16_t, int32_t, floa
 
 class tiff_metadata: public std::unordered_map<ttag_t, tiff_metadata_item> { };
 
-void getExifMetaData(TIFF* tif, tiff_metadata* metadata);
+void readExifMetaData(TIFF* tif, tiff_metadata* metadata);
 
-void getAllTIFFTags(TIFF* tif, tiff_metadata* metadata);
+void readAllTIFFTags(TIFF* tif, tiff_metadata* metadata);
 
 void augment_libtiff_with_custom_tags();
 
-void setMetadata(TIFF* tif, tiff_metadata* metadata, ttag_t key);
+void writeMetadataForTag(TIFF* tif, tiff_metadata* metadata, ttag_t key);
+
+void writeExifMetadata(TIFF* tif, tiff_metadata* exif_metadata);
 
 template <typename T>
 std::vector<T> getVector(const gls::tiff_metadata& metadata, ttag_t key) {
@@ -90,6 +92,8 @@ std::vector<T> getVector(const gls::tiff_metadata& metadata, ttag_t key) {
 #define TIFFTAG_OPCODELIST3 51022
 
 #define TIFFTAG_NOISEPROFILE 51041
+
+#define TIFFTAG_IMAGENUMBER 37393
 
 } // namespace gls
 

@@ -136,7 +136,7 @@ int main(int argc, const char* argv[]) {
 
         LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
 
-        const auto rgb_image = demosaicIMX492DNG(input_path);
+        const auto rgb_image = demosaicAdobeDNG(input_path);
         rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
     }
 }

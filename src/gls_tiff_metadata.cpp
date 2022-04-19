@@ -17,7 +17,7 @@
 
 #include <iostream>
 
-// #define DEBUG_TIFF_TAGS 1
+#define DEBUG_TIFF_TAGS 1
 
 namespace gls {
 
@@ -34,7 +34,7 @@ std::string getFieldName(const TIFFField* tf) {
 }
 
 template<class T>
-bool getMetaData(TIFF* tif, const TIFFField* tf, tiff_metadata* metadata) {
+bool readMetaDataItem(TIFF* tif, const TIFFField* tf, tiff_metadata* metadata) {
     const auto field_tag = TIFFFieldTag(tf);
     const auto field_readcount = TIFFFieldReadCount(tf);
 
@@ -91,7 +91,7 @@ bool getMetaData(TIFF* tif, const TIFFField* tf, tiff_metadata* metadata) {
     return false;
 }
 
-bool getMetaDataString(TIFF* tif, const TIFFField* tf, tiff_metadata* metadata) {
+bool readMetaDataString(TIFF* tif, const TIFFField* tf, tiff_metadata* metadata) {
     const auto field_tag = TIFFFieldTag(tf);
     const auto field_readcount = TIFFFieldReadCount(tf);
 
@@ -113,51 +113,51 @@ bool getMetaDataString(TIFF* tif, const TIFFField* tf, tiff_metadata* metadata) 
     return true;
 }
 
-void getMetadata(TIFF* tif, ttag_t field_tag, tiff_metadata* metadata) {
+void readMetadataForTag(TIFF* tif, tiff_metadata* metadata, ttag_t field_tag) {
     const TIFFField* tf = TIFFFieldWithTag(tif, field_tag);
 
     const auto field_type = TIFFFieldDataType(tf);
     switch (field_type) {
         case TIFF_BYTE: {
-            getMetaData<uint8_t>(tif, tf, metadata);
+            readMetaDataItem<uint8_t>(tif, tf, metadata);
             break;
         }
         case TIFF_UNDEFINED: {
-            getMetaData<uint8_t>(tif, tf, metadata);
+            readMetaDataItem<uint8_t>(tif, tf, metadata);
             break;
         }
         case TIFF_ASCII: {
-            getMetaDataString(tif, tf, metadata);
+            readMetaDataString(tif, tf, metadata);
             break;
         }
         case TIFF_SHORT: {
-            getMetaData<uint16_t>(tif, tf, metadata);
+            readMetaDataItem<uint16_t>(tif, tf, metadata);
             break;
         }
         case TIFF_LONG: {
-            getMetaData<uint32_t>(tif, tf, metadata);
+            readMetaDataItem<uint32_t>(tif, tf, metadata);
             break;
         }
         case TIFF_SBYTE: {
-            getMetaData<int8_t>(tif, tf, metadata);
+            readMetaDataItem<int8_t>(tif, tf, metadata);
             break;
         }
         case TIFF_SSHORT: {
-            getMetaData<int16_t>(tif, tf, metadata);
+            readMetaDataItem<int16_t>(tif, tf, metadata);
             break;
         }
         case TIFF_SLONG: {
-            getMetaData<int32_t>(tif, tf, metadata);
+            readMetaDataItem<int32_t>(tif, tf, metadata);
             break;
         }
         case TIFF_SRATIONAL:
         case TIFF_RATIONAL:
         case TIFF_FLOAT: {
-            getMetaData<float>(tif, tf, metadata);
+            readMetaDataItem<float>(tif, tf, metadata);
             break;
         }
         case TIFF_DOUBLE: {
-            getMetaData<double>(tif, tf, metadata);
+            readMetaDataItem<double>(tif, tf, metadata);
             break;
         }
         case TIFF_IFD:
@@ -171,18 +171,18 @@ void getMetadata(TIFF* tif, ttag_t field_tag, tiff_metadata* metadata) {
     }
 }
 
-void getAllTIFFTags(TIFF* tif, tiff_metadata* metadata) {
+void readAllTIFFTags(TIFF* tif, tiff_metadata* metadata) {
     if (tif) {
         int tag_count = TIFFGetTagListCount(tif);
         for (int i = 0; i < tag_count; i++) {
             ttag_t field_tag = TIFFGetTagListEntry(tif, i);
 
-            getMetadata(tif, field_tag, metadata);
+            readMetadataForTag(tif, metadata, field_tag);
         }
     }
 }
 
-void getExifMetaData(TIFF* tif, tiff_metadata* metadata) {
+void readExifMetaData(TIFF* tif, tiff_metadata* exif_metadata) {
     if (tif) {
         // Go back to the first (main) directory
         TIFFSetDirectory(tif, 0);
@@ -190,15 +190,31 @@ void getExifMetaData(TIFF* tif, tiff_metadata* metadata) {
         // Go to the EXIF directory
         toff_t exif_offset;
         if (TIFFGetField(tif, TIFFTAG_EXIFIFD, &exif_offset)) {
+            std::cout << "Reading EXIF metadata..." << std::endl;
             TIFFReadEXIFDirectory(tif, exif_offset);
 
-            getAllTIFFTags(tif, metadata);
+            readAllTIFFTags(tif, exif_metadata);
+
+            std::cout << "Read " << exif_metadata->size() << " EXIF metadata entries." << std::endl;
         }
     }
 }
 
+void writeExifMetadata(TIFF* tif, tiff_metadata* exif_metadata) {
+    if (TIFFCreateEXIFDirectory(tif) != 0) {
+        std::cerr << "TIFFCreateEXIFDirectory() failed." << std::endl;
+    } else {
+        std::cout << "Saving " << exif_metadata->size() << " EXIF metadata entries." << std::endl;
+        for (auto entry : *exif_metadata) {
+            writeMetadataForTag(tif, exif_metadata, entry.first);
+        }
+        // Write directory to file
+        TIFFWriteDirectory(tif);
+    }
+}
+
 template <typename T>
-void setMetadataItem(TIFF* tif, const TIFFField* tf, const tiff_metadata_item& item) {
+void writeMetadataItem(TIFF* tif, const TIFFField* tf, const tiff_metadata_item& item) {
     const auto writeCount = TIFFFieldWriteCount(tf);
     uint32_t tag = TIFFFieldTag(tf);
     if (writeCount == 1) {
@@ -243,7 +259,7 @@ void setMetadataItem(TIFF* tif, const TIFFField* tf, const tiff_metadata_item& i
     }
 }
 
-void setMetadataString(TIFF* tif, const TIFFField* tf, const tiff_metadata_item& item) {
+void writeMetadataString(TIFF* tif, const TIFFField* tf, const tiff_metadata_item& item) {
     const auto string = std::get<std::string>(item);
 #ifdef DEBUG_TIFF_TAGS
     std::cout << "Saving metadata string " << getFieldName(tf) << ": " << string << std::endl;
@@ -254,54 +270,54 @@ void setMetadataString(TIFF* tif, const TIFFField* tf, const tiff_metadata_item&
     }
 }
 
-void setMetadata(TIFF* tif, tiff_metadata* metadata, ttag_t key) {
-    const auto entry = metadata->find(key);
+void writeMetadataForTag(TIFF* tif, tiff_metadata* metadata, ttag_t tag) {
+    const auto entry = metadata->find(tag);
     if (entry != metadata->end()) {
-        const TIFFField* tf = TIFFFieldWithTag(tif, key);
+        const TIFFField* tf = TIFFFieldWithTag(tif, tag);
         if (tf) {
             const auto field_type = TIFFFieldDataType(tf);
 
             switch (field_type) {
                 case TIFF_BYTE: {
-                    setMetadataItem<uint8_t>(tif, tf, entry->second);
+                    writeMetadataItem<uint8_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_UNDEFINED: {
-                    setMetadataItem<uint8_t>(tif, tf, entry->second);
+                    writeMetadataItem<uint8_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_ASCII: {
-                    setMetadataString(tif, tf, entry->second);
+                    writeMetadataString(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_SHORT: {
-                    setMetadataItem<uint16_t>(tif, tf, entry->second);
+                    writeMetadataItem<uint16_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_LONG: {
-                    setMetadataItem<uint32_t>(tif, tf, entry->second);
+                    writeMetadataItem<uint32_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_SBYTE: {
-                    setMetadataItem<int8_t>(tif, tf, entry->second);
+                    writeMetadataItem<int8_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_SSHORT: {
-                    setMetadataItem<int16_t>(tif, tf, entry->second);
+                    writeMetadataItem<int16_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_SLONG: {
-                    setMetadataItem<int32_t>(tif, tf, entry->second);
+                    writeMetadataItem<int32_t>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_SRATIONAL:
                 case TIFF_RATIONAL:
                 case TIFF_FLOAT: {
-                    setMetadataItem<float>(tif, tf, entry->second);
+                    writeMetadataItem<float>(tif, tf, entry->second);
                     break;
                 }
                 case TIFF_DOUBLE: {
-                    setMetadataItem<double>(tif, tf, entry->second);
+                    writeMetadataItem<double>(tif, tf, entry->second);
                     break;
                 }
                 default:
@@ -343,6 +359,7 @@ static const TIFFFieldInfo xtiffFieldInfo[] = {
 
     { TIFFTAG_NOISEPROFILE, 2, 2, TIFF_FLOAT, FIELD_CUSTOM, 1, 0, "NoiseProfile" },
 
+    { TIFFTAG_IMAGENUMBER, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, "ImageNumber" },
  };
 
 static TIFFExtendProc parent_extender = NULL;  // In case we want a chain of extensions
