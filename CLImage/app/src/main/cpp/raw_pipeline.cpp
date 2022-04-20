@@ -35,9 +35,6 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesyste
         .toneCurveSlope = 3.5,
         .sharpening = 1.25,
         .sharpeningRadius = 7,
-        .chromaDenoiseThreshold = 0.005,
-        .lumaDenoiseThreshold = 0.0005,
-        .denoiseRadius = 7,
     };
 
     gls::tiff_metadata metadata;
@@ -59,9 +56,6 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem:
         .toneCurveSlope = 3.5,
         .sharpening = 1.25,
         .sharpeningRadius = 7,
-        .chromaDenoiseThreshold = 0.005,
-        .lumaDenoiseThreshold = 0.0005,
-        .denoiseRadius = 7,
     };
 
     gls::tiff_metadata metadata;
@@ -85,9 +79,6 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492PNG(const std::filesystem:
         .toneCurveSlope = 3.5,
         .sharpening = 1.25,
         .sharpeningRadius = 7,
-        .chromaDenoiseThreshold = 0.005,
-        .lumaDenoiseThreshold = 0.0005,
-        .denoiseRadius = 7,
     };
 
     gls::tiff_metadata metadata;
@@ -111,9 +102,6 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::
         .toneCurveSlope = 3.5,
         .sharpening = 1.25,
         .sharpeningRadius = 5,
-        .chromaDenoiseThreshold = 0.005,
-        .lumaDenoiseThreshold = 0.0005,
-        .denoiseRadius = 5,
     };
 
     gls::tiff_metadata dng_metadata, exif_metadata;

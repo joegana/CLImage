@@ -244,26 +244,6 @@ kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t
 
 /// ---- Image Denoising ----
 
-float3 denoiseRGB(float3 inputValue, image2d_t inputImage, int2 imageCoordinates) {
-    const int filterSize = 5;
-    const float sigmaR = 0.0025;
-
-    float3 filtered_pixel = 0;
-    float3 kernel_norm = 0;
-    for (int y = -filterSize / 2; y <= filterSize / 2; y++) {
-        for (int x = -filterSize / 2; x <= filterSize / 2; x++) {
-            float3 inputSample = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
-
-            float3 inputDiff = (inputSample - inputValue);
-            float sampleWeight = exp(-0.3 * dot(inputDiff, inputDiff) / (2 * sigmaR * sigmaR));
-
-            filtered_pixel += sampleWeight * inputSample;
-            kernel_norm += sampleWeight;
-        }
-    }
-    return filtered_pixel / kernel_norm;
-}
-
 float3 rgbToYCbCr(float3 inputValue) {
     const float3 matrix[3] = {
         {  0.2126,  0.7152,  0.0722 },
@@ -300,19 +280,26 @@ kernel void yCbCrtoRGBImage(read_only image2d_t inputImage, write_only image2d_t
     write_imagef(outputImage, imageCoordinates, (float4) (outputPixel, 0.0));
 }
 
-float3 denoiseLumaChroma(float lumaSigmaR, float chromaSigmaR, float radius, image2d_t inputImage, int2 imageCoordinates) {
+typedef struct DenoiseParameters {
+    const float chromaSigma;
+    const float lumaSigma;
+    const float radius;
+    const float sharpening;
+} DenoiseParameters;
+
+float3 denoiseLumaChroma(constant DenoiseParameters* parameters, image2d_t inputImage, int2 imageCoordinates) {
     const float3 inputYCC = read_imagef(inputImage, imageCoordinates).xyz;
 
     float3 filtered_pixel = 0;
     float3 kernel_norm = 0;
-    const int filterSize = (int) radius;
+    const int filterSize = (int) parameters->radius;
     for (int y = -filterSize / 2; y <= filterSize / 2; y++) {
         for (int x = -filterSize / 2; x <= filterSize / 2; x++) {
             float3 inputSampleYCC = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
 
             float3 inputDiff = inputSampleYCC - inputYCC;
-            float lumaWeight = exp(-0.3 * dot(inputDiff.x, inputDiff.x) / (2 * lumaSigmaR * lumaSigmaR));
-            float chromaWeight = exp(-0.3 * dot(inputDiff.yz, inputDiff.yz) / (2 * chromaSigmaR * chromaSigmaR));
+            float lumaWeight = exp(-0.3 * dot(inputDiff.x, inputDiff.x) / (2 * parameters->lumaSigma * parameters->lumaSigma));
+            float chromaWeight = exp(-0.3 * dot(inputDiff.yz, inputDiff.yz) / (2 * parameters->chromaSigma * parameters->chromaSigma));
 
             float3 sampleWeight = (float3) (lumaWeight, chromaWeight, chromaWeight);
 
@@ -323,10 +310,10 @@ float3 denoiseLumaChroma(float lumaSigmaR, float chromaSigmaR, float radius, ima
     return filtered_pixel / kernel_norm;
 }
 
-kernel void denoiseImage(read_only image2d_t inputImage, float lumaSigmaR, float chromaSigmaR, float radius, write_only image2d_t denoisedImage) {
+kernel void denoiseImage(read_only image2d_t inputImage, constant DenoiseParameters* parameters, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float3 denoisedPixel = denoiseLumaChroma(lumaSigmaR, chromaSigmaR, radius, inputImage, imageCoordinates);
+    float3 denoisedPixel = denoiseLumaChroma(parameters, inputImage, imageCoordinates);
 
     write_imagef(denoisedImage, imageCoordinates, (float4) (denoisedPixel, 0.0));
 }
@@ -396,9 +383,6 @@ typedef struct DemosaicParameters {
     float toneCurveSlope;
     float sharpening;
     float sharpeningRadius;
-    float chromaDenoiseThreshold;
-    float lumaDenoiseThreshold;
-    float denoiseRadius;
 } DemosaicParameters;
 
 kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t rgbImage,
@@ -407,7 +391,7 @@ kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t 
 
     float3 pixel_value = read_imagef(linearImage, imageCoordinates).xyz;
 
-    pixel_value = sharpen(pixel_value, demosaicParameters->sharpening, demosaicParameters->sharpeningRadius, linearImage, imageCoordinates);
+    // pixel_value = sharpen(pixel_value, demosaicParameters->sharpening, demosaicParameters->sharpeningRadius, linearImage, imageCoordinates);
 
     // pixel_value = saturationBoost(pixel_value, demosaicParameters->contrast);
     pixel_value = contrastBoost(pixel_value, demosaicParameters->contrast);
@@ -440,16 +424,20 @@ kernel void downsample(read_only image2d_t inputImage, write_only image2d_t outp
     write_imagef(outputImage, output_pos, (float4) (outputPixel / 4, 0.0));
 }
 
-kernel void reassemble(read_only image2d_t inputImage0, read_only image2d_t inputImage1,
-                       read_only image2d_t inputImageDenoised1, write_only image2d_t outputImage,
-                       sampler_t linear_sampler) {
+kernel void reassemble(read_only image2d_t inputImageDenoised0, read_only image2d_t inputImage1,
+                       read_only image2d_t inputImageDenoised1, float sharpening,
+                       write_only image2d_t outputImage, sampler_t linear_sampler) {
     const int2 output_pos = (int2) (get_global_id(0), get_global_id(1));
     const float2 inputNorm = 1.0 / convert_float2(get_image_dim(outputImage));
     const float2 input_pos = (convert_float2(output_pos) + 0.5) * inputNorm;
 
-    float3 inputPixel0 = read_imagef(inputImage0, linear_sampler, input_pos).xyz;
+    float3 inputPixelDenoised0 = read_imagef(inputImageDenoised0, linear_sampler, input_pos).xyz;
     float3 inputPixel1 = read_imagef(inputImage1, linear_sampler, input_pos).xyz;
     float3 inputPixelDenoised1 = read_imagef(inputImageDenoised1, linear_sampler, input_pos).xyz;
 
-    write_imagef(outputImage, output_pos, (float4) (inputPixel0 - (inputPixel1 - inputPixelDenoised1), 0.0));
+    float3 denoisedPixel = inputPixelDenoised0 - (inputPixel1 - inputPixelDenoised1);
+
+    denoisedPixel = mix(inputPixelDenoised1, denoisedPixel, sharpening);
+
+    write_imagef(outputImage, output_pos, (float4) (denoisedPixel, 0.0));
 }

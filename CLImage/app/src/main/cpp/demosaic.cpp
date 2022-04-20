@@ -725,46 +725,27 @@ void resampleImage(gls::OpenCLContext* glsContext, const std::string& kernelName
 }
 
 template <typename T>
-void reassembleImage(gls::OpenCLContext* glsContext, const gls::cl_image_2d<T>& inputImage0,
+void reassembleImage(gls::OpenCLContext* glsContext, const gls::cl_image_2d<T>& inputImageDenoised0,
                      const gls::cl_image_2d<T>& inputImage1, const gls::cl_image_2d<T>& inputImageDenoised1,
-                     gls::cl_image_2d<T>* outputImage) {
+                     float sharpening, gls::cl_image_2d<T>* outputImage) {
     // Load the shader source
     const auto program = glsContext->loadProgram("demosaic");
 
     const auto linear_sampler = cl::Sampler(glsContext->clContext(), true, CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_LINEAR);
 
     // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage0
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImageDenoised0
                                     cl::Image2D,  // inputImage1
                                     cl::Image2D,  // inputImageDenoised1
+                                    float,        // sharpening
                                     cl::Image2D,  // outputImage
-                                    cl::Sampler
+                                    cl::Sampler   // linear_sampler
                                     >(program, "reassemble");
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImage0.getImage2D(), inputImage1.getImage2D(), inputImageDenoised1.getImage2D(),
-           outputImage->getImage2D(), linear_sampler);
-}
-
-void denoiseImage(gls::OpenCLContext* glsContext,
-                  const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                  float lumaSigmaR, float chromaSigmaR, float radius,
-                  gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
-    // Load the shader source
-    const auto program = glsContext->loadProgram("demosaic");
-
-    // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
-                                    float,        // lumaSigmaR
-                                    float,        // chromaSigmaR
-                                    float,        // radius,
-                                    cl::Image2D   // outputImage
-                                    >(program, "denoiseImage");
-
-    // Schedule the kernel on the GPU
-    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImage.getImage2D(), lumaSigmaR, chromaSigmaR, radius, outputImage->getImage2D());
+           inputImageDenoised0.getImage2D(), inputImage1.getImage2D(), inputImageDenoised1.getImage2D(),
+           sharpening, outputImage->getImage2D(), linear_sampler);
 }
 
 void convertTosRGB(gls::OpenCLContext* glsContext,
@@ -801,22 +782,43 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
 // --- Multiscale Noise Reduction ---
 // https://www.cns.nyu.edu/pub/lcv/rajashekar08a.pdf
 
-template <int levels = 4>
-struct PyramidalDenoise {
-    gls::cl_image_2d<gls::rgba_pixel_float>::unique_ptr imagePyramid[levels-1];
-    gls::cl_image_2d<gls::rgba_pixel_float>::unique_ptr denoisedImagePyramid[levels];
+void denoiseImage(gls::OpenCLContext* glsContext,
+                  const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                  const DenoiseParameters& denoiseParameters,
+                  gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
 
-    PyramidalDenoise(const cl::Context clContext, const gls::cl_image_2d<gls::rgba_pixel_float>& image) {
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
+                                    cl::Buffer,   // denoiseParameters
+                                    cl::Image2D   // outputImage
+                                    >(program, "denoiseImage");
+
+    cl::Buffer denoiseParametersBuffer(glsContext->clContext(), CL_MEM_USE_HOST_PTR, sizeof(DenoiseParameters), (void *) &denoiseParameters);
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+           inputImage.getImage2D(), denoiseParametersBuffer, outputImage->getImage2D());
+}
+
+template <size_t levels = 4>
+struct PyramidalDenoise {
+    typedef gls::cl_image_2d<gls::rgba_pixel_float> imageType;
+    imageType::unique_ptr imagePyramid[levels-1];
+    imageType::unique_ptr denoisedImagePyramid[levels];
+
+    PyramidalDenoise(const cl::Context clContext, const imageType& image) {
         for (int i = 0, scale = 2; i < levels-1; i++, scale *= 2) {
-            imagePyramid[i] = std::make_unique<gls::cl_image_2d<gls::rgba_pixel_float>>(clContext, image.width/scale, image.height/scale);
+            imagePyramid[i] = std::make_unique<imageType>(clContext, image.width/scale, image.height/scale);
         }
         for (int i = 0, scale = 1; i < levels; i++, scale *= 2) {
-            denoisedImagePyramid[i] = std::make_unique<gls::cl_image_2d<gls::rgba_pixel_float>>(clContext, image.width/scale, image.height/scale);
+            denoisedImagePyramid[i] = std::make_unique<imageType>(clContext, image.width/scale, image.height/scale);
         }
     }
 
-    gls::cl_image_2d<gls::rgba_pixel_float>* denoise(gls::OpenCLContext* glsContext, const DemosaicParameters& demosaicParameters,
-                                                     gls::cl_image_2d<gls::rgba_pixel_float>* image) {
+    imageType* denoise(gls::OpenCLContext* glsContext, const std::array<DenoiseParameters, levels>& denoiseParameters,
+                       imageType* image) {
         // Convert image to YCbCr for Luma/Chroma Denoising
         applyKernel(glsContext, "rgbToYCbCrImage", *image, image);
 
@@ -826,17 +828,18 @@ struct PyramidalDenoise {
 
         // Denoise the bottom of the pyramid
         denoiseImage(glsContext, *(imagePyramid[levels-2]),
-                     demosaicParameters.lumaDenoiseThreshold, demosaicParameters.chromaDenoiseThreshold, demosaicParameters.denoiseRadius,
+                     denoiseParameters[levels-1],
                      denoisedImagePyramid[levels-1].get());
 
         for (int i = levels - 2; i >= 0; i--) {
             // Denoise current layer
             denoiseImage(glsContext, i > 0 ? *(imagePyramid[i - 1]) : *image,
-                         demosaicParameters.lumaDenoiseThreshold, demosaicParameters.chromaDenoiseThreshold, demosaicParameters.denoiseRadius,
+                         denoiseParameters[i],
                          denoisedImagePyramid[i].get());
 
             // Subtract noise from previous layer from it
-            reassembleImage(glsContext, *(denoisedImagePyramid[i]), *(imagePyramid[i]), *(denoisedImagePyramid[i+1]), denoisedImagePyramid[i].get());
+            reassembleImage(glsContext, *(denoisedImagePyramid[i]), *(imagePyramid[i]),
+                            *(denoisedImagePyramid[i+1]), denoiseParameters[i].sharpening, denoisedImagePyramid[i].get());
         }
 
         // Convert result to RGB
@@ -876,8 +879,35 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
 
     // --- Image Denoising ---
 
+    std::array<DenoiseParameters, 4> denoiseParameters = {{
+        {
+            .chromaSigma = 0.005,
+            .lumaSigma = 0.0005,
+            .radius = 5,
+            .sharpening = 1.2
+        },
+        {
+            .chromaSigma = 0.005,
+            .lumaSigma = 0.0005,
+            .radius = 5,
+            .sharpening = 1.0
+        },
+        {
+            .chromaSigma = 0.005,
+            .lumaSigma = 0.0005,
+            .radius = 5,
+            .sharpening = 1.0
+        },
+        {
+            .chromaSigma = 0.001,
+            .lumaSigma = 0.0005,
+            .radius = 5,
+            .sharpening = 1.0
+        }
+    }};
+
     PyramidalDenoise pyramidalDenoise(glsContext.clContext(), clLinearRGBImage);
-    auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, demosaicParameters, &clLinearRGBImage);
+    auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, denoiseParameters, &clLinearRGBImage);
 
     // --- Image Post Processing ---
 
