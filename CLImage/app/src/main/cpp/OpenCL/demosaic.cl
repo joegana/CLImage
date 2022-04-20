@@ -418,3 +418,38 @@ kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t 
 
     write_imagef(rgbImage, imageCoordinates, (float4) (toneCurve(clamp(rgb, 0.0, 1.0), demosaicParameters->toneCurveSlope), 0.0));
 }
+
+kernel void resample(read_only image2d_t inputImage, write_only image2d_t outputImage, sampler_t linear_sampler) {
+    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
+    const float2 inputNorm = 1.0 / convert_float2(get_image_dim(outputImage));
+
+    float3 outputPixel = read_imagef(inputImage, linear_sampler, convert_float2(imageCoordinates) * inputNorm + 0.5 * inputNorm).xyz;
+    write_imagef(outputImage, imageCoordinates, (float4) (outputPixel, 0.0));
+}
+
+kernel void downsample(read_only image2d_t inputImage, write_only image2d_t outputImage, sampler_t linear_sampler) {
+    const int2 output_pos = (int2) (get_global_id(0), get_global_id(1));
+    const float2 input_norm = 1.0 / convert_float2(get_image_dim(outputImage));
+    const float2 input_pos = (convert_float2(output_pos) + 0.5) * input_norm;
+    const float2 s = 0.4 * input_norm;
+
+    float3 outputPixel = read_imagef(inputImage, linear_sampler, input_pos + (float2)(-s.x, -s.y)).xyz;
+    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)( s.x, -s.y)).xyz;
+    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)(-s.x,  s.y)).xyz;
+    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)( s.x,  s.y)).xyz;
+    write_imagef(outputImage, output_pos, (float4) (outputPixel / 4, 0.0));
+}
+
+kernel void reassemble(read_only image2d_t inputImage0, read_only image2d_t inputImage1,
+                       read_only image2d_t inputImageDenoised1, write_only image2d_t outputImage,
+                       sampler_t linear_sampler) {
+    const int2 output_pos = (int2) (get_global_id(0), get_global_id(1));
+    const float2 inputNorm = 1.0 / convert_float2(get_image_dim(outputImage));
+    const float2 input_pos = (convert_float2(output_pos) + 0.5) * inputNorm;
+
+    float3 inputPixel0 = read_imagef(inputImage0, linear_sampler, input_pos).xyz;
+    float3 inputPixel1 = read_imagef(inputImage1, linear_sampler, input_pos).xyz;
+    float3 inputPixelDenoised1 = read_imagef(inputImageDenoised1, linear_sampler, input_pos).xyz;
+
+    write_imagef(outputImage, output_pos, (float4) (inputPixel0 - (inputPixel1 - inputPixelDenoised1), 0.0));
+}

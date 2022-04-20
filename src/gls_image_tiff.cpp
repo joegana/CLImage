@@ -352,15 +352,12 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
                             dng_stream stream((uint8_t *) tiffbuf.get(), tileSize);
                             dng_spooler spooler;
                             uint32_t decodedSize = maxTileWidth * maxTileHeight * sizeof(uint16_t);
-                            DecodeLosslessJPEG(stream, spooler,
-                                               decodedSize,
-                                               decodedSize,
-                                               false, tileSize);
+                            DecodeLosslessJPEG(stream, spooler, decodedSize, decodedSize, false, tileSize);
 
                             uint16_t *tilePixels = (uint16_t *) spooler.data();
                             for (int y = 0; y < tileHeight; y++) {
                                 for (int x = 0; x < tileWidth; x++) {
-                                    imagebuf[(tileY + y) * width + tileX + x] = tilePixels[y * tileWidth + x];
+                                    imagebuf[(tileY + y) * width + tileX + x] = tilePixels[y * maxTileWidth + x];
                                 }
                             }
                         }
