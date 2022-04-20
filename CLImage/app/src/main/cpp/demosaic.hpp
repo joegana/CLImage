@@ -55,4 +55,7 @@ gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls:
 gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage,
                                                       gls::tiff_metadata* metadata, const DemosaicParameters& parameters,
                                                       bool auto_white_balance);
+
+gls::image<gls::rgba_pixel>::unique_ptr fastDemosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
+                                                          const DemosaicParameters& demosaicParameters, bool auto_white_balance);
 #endif /* demosaic_hpp */

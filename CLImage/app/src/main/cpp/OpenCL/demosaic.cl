@@ -153,7 +153,7 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
         float sample_flat = g_ave + whiteness * (c_xy - (c_left + c_right + c_up + c_down) / 4) / 4;
 
         // TODO: replace eps with some multiple of sigma from the noise model
-        float eps = 0.01;
+        float eps = 0.08;
         float flatness = 1 - smoothstep(eps / 2.0, eps, fabs(dv.x - dv.y));
         float sample = mix(dv.x > dv.y ? sample_v : sample_h, sample_flat, flatness);
 
@@ -197,8 +197,10 @@ kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t
             float c2_bottom_left  = g_bottom_left  - read_imagef(rawImage, (int2)(x - 1, y + 1)).x;
             float c2_bottom_right = g_bottom_right - read_imagef(rawImage, (int2)(x + 1, y + 1)).x;
 
+            // TODO: replace eps with some multiple of sigma from the noise model
+            float eps = 0.08;
             float2 dc = (float2) (fabs(c2_top_left - c2_bottom_right), fabs(c2_top_right - c2_bottom_left));
-            float alpha = length(dc) > 0.01 ? atan2(dc.y, dc.x) / M_PI_2_F : 0.5;
+            float alpha = length(dc) > eps ? atan2(dc.y, dc.x) / M_PI_2_F : 0.5;
             float c2 = green - mix((c2_top_right + c2_bottom_left) / 2,
                                    (c2_top_left + c2_bottom_right) / 2, alpha);
 
@@ -242,7 +244,25 @@ kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t
     write_imagef(rgbImage, imageCoordinates, (float4)(clamp((float3)(red, green, blue), 0.0, 1.0), 0));
 }
 
+kernel void fastDebayer(read_only image2d_t rawImage, write_only image2d_t rgbImage, int bayerPattern) {
+    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
+
+    const int2 r = bayerOffsets[bayerPattern][raw_red];
+    const int2 g = bayerOffsets[bayerPattern][raw_green];
+    const int2 b = bayerOffsets[bayerPattern][raw_blue];
+    const int2 g2 = bayerOffsets[bayerPattern][raw_green2];
+
+    float red    = read_imagef(rawImage, 2 * imageCoordinates + r).x;
+    float green  = read_imagef(rawImage, 2 * imageCoordinates + g).x;
+    float blue   = read_imagef(rawImage, 2 * imageCoordinates + b).x;
+    float green2 = read_imagef(rawImage, 2 * imageCoordinates + g2).x;
+
+    write_imagef(rgbImage, imageCoordinates, (float4)(red, (green + green2) / 2, blue, 0.0));
+}
+
 /// ---- Image Denoising ----
+
+// TODO: use the actual Camera Color Space version of this
 
 float3 rgbToYCbCr(float3 inputValue) {
     const float3 matrix[3] = {
@@ -318,6 +338,46 @@ kernel void denoiseImage(read_only image2d_t inputImage, constant DenoiseParamet
     write_imagef(denoisedImage, imageCoordinates, (float4) (denoisedPixel, 0.0));
 }
 
+kernel void downsampleImage(read_only image2d_t inputImage, write_only image2d_t outputImage, sampler_t linear_sampler) {
+    const int2 output_pos = (int2) (get_global_id(0), get_global_id(1));
+    const float2 input_norm = 1.0 / convert_float2(get_image_dim(outputImage));
+    const float2 input_pos = (convert_float2(output_pos) + 0.5) * input_norm;
+    const float2 s = 0.4 * input_norm;
+
+    float3 outputPixel = read_imagef(inputImage, linear_sampler, input_pos + (float2)(-s.x, -s.y)).xyz;
+    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)( s.x, -s.y)).xyz;
+    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)(-s.x,  s.y)).xyz;
+    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)( s.x,  s.y)).xyz;
+    write_imagef(outputImage, output_pos, (float4) (outputPixel / 4, 0.0));
+}
+
+kernel void reassembleImage(read_only image2d_t inputImageDenoised0, read_only image2d_t inputImage1,
+                            read_only image2d_t inputImageDenoised1, float sharpening,
+                            write_only image2d_t outputImage, sampler_t linear_sampler) {
+    const int2 output_pos = (int2) (get_global_id(0), get_global_id(1));
+    const float2 inputNorm = 1.0 / convert_float2(get_image_dim(outputImage));
+    const float2 input_pos = (convert_float2(output_pos) + 0.5) * inputNorm;
+
+    float3 inputPixelDenoised0 = read_imagef(inputImageDenoised0, output_pos).xyz;
+    float3 inputPixel1 = read_imagef(inputImage1, linear_sampler, input_pos).xyz;
+    float3 inputPixelDenoised1 = read_imagef(inputImageDenoised1, linear_sampler, input_pos).xyz;
+
+    float dx = read_imagef(inputImageDenoised0, output_pos + (int2)(1, 0)).x - inputPixelDenoised0.x;
+    float dy = read_imagef(inputImageDenoised0, output_pos + (int2)(0, 1)).x - inputPixelDenoised0.x;
+
+    float3 denoisedPixel = inputPixelDenoised0 - (inputPixel1 - inputPixelDenoised1);
+
+    // Smart sharpening
+    float amount = sharpening * smoothstep(0.0, 0.03, fabs(dx) + fabs(dy))              // Gradient magnitude thresholding
+                              * (1.0 - smoothstep(0.95, 1.0, denoisedPixel.x))          // Highlights ringing protection
+                              * (0.6 + 0.4 * smoothstep(0.0, 0.1, denoisedPixel.x));    // Shadows ringing protection
+
+    // Only sharpen the luma channel
+    denoisedPixel.x = mix(inputPixelDenoised1.x, denoisedPixel.x, fmax(amount, 1.0));
+
+    write_imagef(outputImage, output_pos, (float4) (denoisedPixel, 0.0));
+}
+
 /// ---- Image Sharpening ----
 
 float3 gaussianBlur(float radius, image2d_t inputImage, int2 imageCoordinates) {
@@ -391,8 +451,6 @@ kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t 
 
     float3 pixel_value = read_imagef(linearImage, imageCoordinates).xyz;
 
-    // pixel_value = sharpen(pixel_value, demosaicParameters->sharpening, demosaicParameters->sharpeningRadius, linearImage, imageCoordinates);
-
     // pixel_value = saturationBoost(pixel_value, demosaicParameters->contrast);
     pixel_value = contrastBoost(pixel_value, demosaicParameters->contrast);
 
@@ -409,35 +467,4 @@ kernel void resample(read_only image2d_t inputImage, write_only image2d_t output
 
     float3 outputPixel = read_imagef(inputImage, linear_sampler, convert_float2(imageCoordinates) * inputNorm + 0.5 * inputNorm).xyz;
     write_imagef(outputImage, imageCoordinates, (float4) (outputPixel, 0.0));
-}
-
-kernel void downsample(read_only image2d_t inputImage, write_only image2d_t outputImage, sampler_t linear_sampler) {
-    const int2 output_pos = (int2) (get_global_id(0), get_global_id(1));
-    const float2 input_norm = 1.0 / convert_float2(get_image_dim(outputImage));
-    const float2 input_pos = (convert_float2(output_pos) + 0.5) * input_norm;
-    const float2 s = 0.4 * input_norm;
-
-    float3 outputPixel = read_imagef(inputImage, linear_sampler, input_pos + (float2)(-s.x, -s.y)).xyz;
-    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)( s.x, -s.y)).xyz;
-    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)(-s.x,  s.y)).xyz;
-    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)( s.x,  s.y)).xyz;
-    write_imagef(outputImage, output_pos, (float4) (outputPixel / 4, 0.0));
-}
-
-kernel void reassemble(read_only image2d_t inputImageDenoised0, read_only image2d_t inputImage1,
-                       read_only image2d_t inputImageDenoised1, float sharpening,
-                       write_only image2d_t outputImage, sampler_t linear_sampler) {
-    const int2 output_pos = (int2) (get_global_id(0), get_global_id(1));
-    const float2 inputNorm = 1.0 / convert_float2(get_image_dim(outputImage));
-    const float2 input_pos = (convert_float2(output_pos) + 0.5) * inputNorm;
-
-    float3 inputPixelDenoised0 = read_imagef(inputImageDenoised0, linear_sampler, input_pos).xyz;
-    float3 inputPixel1 = read_imagef(inputImage1, linear_sampler, input_pos).xyz;
-    float3 inputPixelDenoised1 = read_imagef(inputImageDenoised1, linear_sampler, input_pos).xyz;
-
-    float3 denoisedPixel = inputPixelDenoised0 - (inputPixel1 - inputPixelDenoised1);
-
-    denoisedPixel = mix(inputPixelDenoised1, denoisedPixel, sharpening);
-
-    write_imagef(outputImage, output_pos, (float4) (denoisedPixel, 0.0));
 }

@@ -688,6 +688,26 @@ void interpolateRedBlue(gls::OpenCLContext* glsContext,
            rawImage.getImage2D(), greenImage.getImage2D(), rgbImage->getImage2D(), bayerPattern);
 }
 
+void fasteDebayer(gls::OpenCLContext* glsContext,
+                  const gls::cl_image_2d<gls::luma_pixel_float>& rawImage,
+                  gls::cl_image_2d<gls::rgba_pixel_float>* rgbImage,
+                  BayerPattern bayerPattern) {
+    assert(rawImage.width == 2 * rgbImage->width && rawImage.height == 2 * rgbImage->height);
+
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
+                                    cl::Image2D,  // rgbImage
+                                    int           // bayerPattern
+                                    >(program, "fastDebayer");
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
+           rawImage.getImage2D(), rgbImage->getImage2D(), bayerPattern);
+}
+
 template <typename T>
 void applyKernel(gls::OpenCLContext* glsContext, const std::string& kernelName,
                 const gls::cl_image_2d<T>& inputImage,
@@ -740,7 +760,7 @@ void reassembleImage(gls::OpenCLContext* glsContext, const gls::cl_image_2d<T>& 
                                     float,        // sharpening
                                     cl::Image2D,  // outputImage
                                     cl::Sampler   // linear_sampler
-                                    >(program, "reassemble");
+                                    >(program, "reassembleImage");
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
@@ -805,8 +825,8 @@ void denoiseImage(gls::OpenCLContext* glsContext,
 template <size_t levels = 4>
 struct PyramidalDenoise {
     typedef gls::cl_image_2d<gls::rgba_pixel_float> imageType;
-    imageType::unique_ptr imagePyramid[levels-1];
-    imageType::unique_ptr denoisedImagePyramid[levels];
+    std::array<imageType::unique_ptr, levels-1> imagePyramid;
+    std::array<imageType::unique_ptr, levels> denoisedImagePyramid;
 
     PyramidalDenoise(const cl::Context clContext, const imageType& image) {
         for (int i = 0, scale = 2; i < levels-1; i++, scale *= 2) {
@@ -822,11 +842,11 @@ struct PyramidalDenoise {
         // Convert image to YCbCr for Luma/Chroma Denoising
         applyKernel(glsContext, "rgbToYCbCrImage", *image, image);
 
-        for (int i = 0; i < 3; i++) {
-            resampleImage(glsContext, "downsample", i == 0 ? *image : *imagePyramid[i - 1], imagePyramid[i].get());
+        for (int i = 0; i < levels-1; i++) {
+            resampleImage(glsContext, "downsampleImage", i == 0 ? *image : *imagePyramid[i - 1], imagePyramid[i].get());
         }
 
-        // Denoise the bottom of the pyramid
+        // Denoise the bottom of the image pyramid
         denoiseImage(glsContext, *(imagePyramid[levels-2]),
                      denoiseParameters[levels-1],
                      denoisedImagePyramid[levels-1].get());
@@ -837,7 +857,7 @@ struct PyramidalDenoise {
                          denoiseParameters[i],
                          denoisedImagePyramid[i].get());
 
-            // Subtract noise from previous layer from it
+            // Subtract noise from previous layer
             reassembleImage(glsContext, *(denoisedImagePyramid[i]), *(imagePyramid[i]),
                             *(denoisedImagePyramid[i+1]), denoiseParameters[i].sharpening, denoisedImagePyramid[i].get());
         }
@@ -881,28 +901,28 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
 
     std::array<DenoiseParameters, 4> denoiseParameters = {{
         {
-            .chromaSigma = 0.005,
+            .chromaSigma = 0.01,
             .lumaSigma = 0.0005,
             .radius = 5,
-            .sharpening = 1.2
+            .sharpening = 1.1
+        },
+        {
+            .chromaSigma = 0.01,
+            .lumaSigma = 0.001,
+            .radius = 5,
+            .sharpening = 1.3
         },
         {
             .chromaSigma = 0.005,
             .lumaSigma = 0.0005,
             .radius = 5,
-            .sharpening = 1.0
-        },
-        {
-            .chromaSigma = 0.005,
-            .lumaSigma = 0.0005,
-            .radius = 5,
-            .sharpening = 1.0
+            .sharpening = 1.1
         },
         {
             .chromaSigma = 0.001,
             .lumaSigma = 0.0005,
             .radius = 5,
-            .sharpening = 1.0
+            .sharpening = 1.1
         }
     }};
 
@@ -920,6 +940,46 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
     double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
 
     LOG_INFO(TAG) << "OpenCL Pipeline Execution Time: " << (int) elapsed_time_ms << "ms for image of size: " << rawImage.width << " x " << rawImage.height << std::endl;
+
+    return rgbaImage;
+}
+
+gls::image<gls::rgba_pixel>::unique_ptr fastDemosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
+                                                          const DemosaicParameters& demosaicParameters, bool auto_white_balance) {
+    auto t_start = std::chrono::high_resolution_clock::now();
+
+    BayerPattern bayerPattern;
+    float black_level;
+    gls::Vector<4> scale_mul;
+    gls::Matrix<3, 3> rgb_cam;
+
+    unpackRawMetadata(rawImage, metadata, &bayerPattern, &black_level, &scale_mul, &rgb_cam, auto_white_balance);
+
+    gls::OpenCLContext glsContext("");
+    auto clContext = glsContext.clContext();
+
+    LOG_INFO(TAG) << "Begin demosaicing image (GPU)..." << std::endl;
+
+    // --- Image Demosaicing ---
+
+    gls::cl_image_2d<gls::luma_pixel_16> clRawImage(clContext, rawImage);
+    gls::cl_image_2d<gls::luma_pixel_float> clScaledRawImage(clContext, rawImage.width, rawImage.height);
+    scaleRawData(&glsContext, clRawImage, &clScaledRawImage, bayerPattern, scale_mul, black_level / 0xffff);
+
+    gls::cl_image_2d<gls::rgba_pixel_float> clLinearRGBImage(clContext, rawImage.width/2, rawImage.height/2);
+    fasteDebayer(&glsContext, clScaledRawImage, &clLinearRGBImage, bayerPattern);
+
+    // --- Image Post Processing ---
+
+    gls::cl_image_2d<gls::rgba_pixel> clsRGBImage(clContext, clLinearRGBImage.width, clLinearRGBImage.height);
+    convertTosRGB(&glsContext, clLinearRGBImage, &clsRGBImage, rgb_cam, demosaicParameters);
+
+    auto rgbaImage = clsRGBImage.toImage();
+
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+
+    LOG_INFO(TAG) << "OpenCL Pipeline Execution Time: " << (int) elapsed_time_ms << "ms for image of size: " << clLinearRGBImage.width << " x " << clLinearRGBImage.height << std::endl;
 
     return rgbaImage;
 }
