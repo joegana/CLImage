@@ -95,6 +95,13 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492PNG(const std::filesystem:
     return demosaicImage(*inputImage, &metadata, demosaicParameters, /*auto_white_balance=*/ false);
 }
 
+void copyMetadata(const gls::tiff_metadata& source, gls::tiff_metadata* destination, ttag_t tag) {
+    const auto entry = source.find(tag);
+    if (entry != source.end()) {
+        destination->insert({ tag, entry->second });
+    }
+}
+
 gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::path& input_path) {
     const DemosaicParameters demosaicParameters = {
         .contrast = 1.05,
@@ -109,9 +116,36 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::
 
     auto rgb_image = demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false);
 
+    gls::tiff_metadata my_exif_metadata;
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FNUMBER);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREPROGRAM);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEORIGINAL);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEDIGITIZED);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIME);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIMEORIGINAL);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIMEDIGITIZED);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_COMPONENTSCONFIGURATION);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_SHUTTERSPEEDVALUE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_APERTUREVALUE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREBIASVALUE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_MAXAPERTUREVALUE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_METERINGMODE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LIGHTSOURCE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FLASH);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FOCALLENGTH);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_COLORSPACE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_SENSINGMETHOD);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_WHITEBALANCE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_BODYSERIALNUMBER);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSSPECIFICATION);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSMAKE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSMODEL);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSSERIALNUMBER);
+
     // Write out a stripped DNG files with minimal metadata
     auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
-    inputImage->write_dng_file(output_file, /*compression=*/ gls::JPEG, &dng_metadata, &exif_metadata);
+    inputImage->write_dng_file(output_file, /*compression=*/ gls::JPEG, &dng_metadata, &my_exif_metadata);
 
     return rgb_image;
 }

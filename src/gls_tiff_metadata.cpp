@@ -17,7 +17,7 @@
 
 #include <iostream>
 
-// #define DEBUG_TIFF_TAGS 1
+#define DEBUG_TIFF_TAGS 1
 
 namespace gls {
 
@@ -201,6 +201,8 @@ void readExifMetaData(TIFF* tif, tiff_metadata* exif_metadata) {
 }
 
 void writeExifMetadata(TIFF* tif, tiff_metadata* exif_metadata) {
+    TIFFWriteDirectory(tif);
+
     if (TIFFCreateEXIFDirectory(tif) != 0) {
         std::cerr << "TIFFCreateEXIFDirectory() failed." << std::endl;
     } else {
@@ -208,6 +210,20 @@ void writeExifMetadata(TIFF* tif, tiff_metadata* exif_metadata) {
         for (auto entry : *exif_metadata) {
             writeMetadataForTag(tif, exif_metadata, entry.first);
         }
+
+        unsigned char exifVersion[4] = {'0','2','3','1'};        /* EXIF 2.31 version is 4 characters of a string! */
+        if (!TIFFSetField( tif, EXIFTAG_EXIFVERSION, exifVersion)) {
+            throw std::runtime_error("Can't write EXIFTAG_EXIFVERSION.");
+        }
+
+        uint64_t dir_offset_EXIF = 0;
+        if (!TIFFWriteCustomDirectory( tif, &dir_offset_EXIF )) {
+            throw std::runtime_error("TIFFWriteCustomDirectory() with EXIF failed.");
+        }
+
+        TIFFSetDirectory(tif, 0);
+        TIFFSetField(tif, TIFFTAG_EXIFIFD, dir_offset_EXIF );
+
         // Write directory to file
         TIFFWriteDirectory(tif);
     }
