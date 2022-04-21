@@ -36,10 +36,10 @@ typedef struct DemosaicParameters {
 } DemosaicParameters;
 
 typedef struct DenoiseParameters {
-    const float chromaSigma;
-    const float lumaSigma;
-    const float radius;
-    const float sharpening;
+    float lumaVariance;
+    float chromaVariance;
+    float radius;
+    float sharpening;
 } DenoiseParameters;
 
 void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);

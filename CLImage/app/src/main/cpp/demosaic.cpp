@@ -16,6 +16,9 @@
 #include <climits>
 #include <cmath>
 #include <sys/types.h>
+#include <iomanip>
+#include <numeric>
+#include <vector>
 
 #include "demosaic.hpp"
 #include "gls_color_science.hpp"
@@ -822,6 +825,208 @@ void denoiseImage(gls::OpenCLContext* glsContext,
            inputImage.getImage2D(), denoiseParametersBuffer, outputImage->getImage2D());
 }
 
+enum GMBColors {
+    DarkSkin        = 0,
+    LightSkin       = 1,
+    BlueSky         = 2,
+    Foliage         = 3,
+    BlueFlower      = 4,
+    BluishGreen     = 5,
+    Orange          = 6,
+    PurplishBlue    = 7,
+    ModerateRed     = 8,
+    Purple          = 9,
+    YellowGreen     = 10,
+    OrangeYellow    = 11,
+    Blue            = 12,
+    Green           = 13,
+    Red             = 14,
+    Yellow          = 15,
+    Magenta         = 16,
+    Cyan            = 17,
+    White           = 18,
+    Neutral_8       = 19,
+    Neutral_6_5     = 20,
+    Neutral_5       = 21,
+    Neutral_3_5     = 22,
+    Black           = 23
+};
+
+const char* GMBColorNames[24] {
+    "DarkSkin",
+    "LightSkin",
+    "BlueSky",
+    "Foliage",
+    "BlueFlower",
+    "BluishGreen",
+    "Orange",
+    "PurplishBlue",
+    "ModerateRed",
+    "Purple",
+    "YellowGreen",
+    "OrangeYellow",
+    "Blue",
+    "Green",
+    "Red",
+    "Yellow",
+    "Magenta",
+    "Cyan",
+    "White",
+    "Neutral_8",
+    "Neutral_6_5",
+    "Neutral_5",
+    "Neutral_3_5",
+    "Black"
+};
+
+struct PatchStats {
+    std::array<float, 3> mean;
+    std::array<float, 3> variance;
+};
+
+float square(float x) {
+    return x * x;
+}
+
+// Collect mean and variance of ColorChecker patches
+void colorCheckerStats(gls::image<gls::rgba_pixel_float>* image, const gls::rectangle& gmb_position, std::array<PatchStats, 24>* stats) {
+    std::cout << "rectangle: " << gmb_position.x << ", " << gmb_position.y << ", " << gmb_position.width << ", " << gmb_position.height << std::endl;
+
+    int patch_width = gmb_position.width / 6;
+    int patch_height = gmb_position.height / 4;
+
+    int patchIdx = 0;
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 6; col++, patchIdx++) {
+            gls::rectangle patch = {
+                gmb_position.x + col * patch_width + (int) (0.2 * patch_width),
+                gmb_position.y + row * patch_height + (int) (0.2 * patch_height),
+                (int) (0.6 * patch_width),
+                (int) (0.6 * patch_height) };
+
+            int patchSamples = patch.width * patch.height;
+
+            float avgY = 0;
+            float avgCb = 0;
+            float avgCr = 0;
+
+            for (int y = 0; y < patch.height; y++) {
+                for (int x = 0; x < patch.width; x++) {
+                    const auto& p = (*image)[patch.y + y][patch.x + x];
+                    avgY += p[0];
+                    avgCr += p[1];
+                    avgCb += p[2];
+                }
+            }
+
+            avgY /= patchSamples;
+            avgCb /= patchSamples;
+            avgCr /= patchSamples;
+
+            float varY = 0;
+            float varCb = 0;
+            float varCr = 0;
+
+            for (int y = 0; y < patch.height; y++) {
+                for (int x = 0; x < patch.width; x++) {
+                    const auto& p = (*image)[patch.y + y][patch.x + x];
+                    varY += square(p[0] - avgY);
+                    varCr += square(p[1] - avgCb);
+                    varCb += square(p[2] - avgCr);
+
+                    (*image)[patch.y + y][patch.x + x] = {0, 0, 0, 0};
+                }
+            }
+
+            varY /= patchSamples;
+            varCb /= patchSamples;
+            varCr /= patchSamples;
+
+//            std::cout << std::setw(12) << std::setfill(' ') << GMBColorNames[patchIdx] << " - avg(" << patchSamples << "): {"
+//                      << std::setprecision(2) << avgY << ", " << avgCb << ", " << avgCr << "}, var: {" << varY << ", " << varCb << ", " << varCr << "}" << std::endl;
+
+            (*stats)[patchIdx] = {{avgY, avgCb, avgCr}, {varY, varCb, varCr}};
+        }
+    }
+}
+
+// Slope Regression of a set of points
+template <size_t N>
+float slope_regression(const std::array<float, N>& x, const std::array<float, N>& y) {
+    const auto s_x  = std::accumulate(x.begin(), x.end(), 0.0);
+    const auto s_y  = std::accumulate(y.begin(), y.end(), 0.0);
+    const auto s_xx = std::inner_product(x.begin(), x.end(), x.begin(), 0.0);
+    const auto s_xy = std::inner_product(x.begin(), x.end(), y.begin(), 0.0);
+    const auto a    = (N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x);
+    return a;
+}
+
+// Estimate the Sensor's Noise Level Function (NLF: variance vs intensity), which is linear going through zero
+std::array<float, 3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* image, const gls::rectangle& gmb_position) {
+    std::array<PatchStats, 24> stats;
+    colorCheckerStats(image, gmb_position, &stats);
+
+    std::array<float, 6> y_intensity = {
+        stats[Black].mean[0],
+        stats[Neutral_3_5].mean[0],
+        stats[Neutral_5].mean[0],
+        stats[Neutral_6_5].mean[0],
+        stats[Neutral_8].mean[0],
+        stats[White].mean[0]
+    };
+
+    std::array<float, 6> y_variance = {
+        stats[Black].variance[0],
+        stats[Neutral_3_5].variance[0],
+        stats[Neutral_5].variance[0],
+        stats[Neutral_6_5].variance[0],
+        stats[Neutral_8].variance[0],
+        stats[White].variance[0]
+    };
+
+    std::array<float, 6> cb_variance = {
+        stats[Black].variance[1],
+        stats[Neutral_3_5].variance[1],
+        stats[Neutral_5].variance[1],
+        stats[Neutral_6_5].variance[1],
+        stats[Neutral_8].variance[1],
+        stats[White].variance[1]
+    };
+
+    std::array<float, 6> cr_variance = {
+        stats[Black].variance[2],
+        stats[Neutral_3_5].variance[2],
+        stats[Neutral_5].variance[2],
+        stats[Neutral_6_5].variance[2],
+        stats[Neutral_8].variance[2],
+        stats[White].variance[2]
+    };
+
+    float nlf_y = slope_regression(y_intensity, y_variance);
+    float nlf_cb = slope_regression(y_intensity, cb_variance);
+    float nlf_cr = slope_regression(y_intensity, cr_variance);
+
+    return {nlf_y, nlf_cb, nlf_cr};
+}
+
+std::array<float, 3> extractNFLFromColoRchecher(const gls::cl_image_2d<gls::rgba_pixel_float>& image, const gls::rectangle gmb_position, int scale) {
+    auto yCbCrImage = image.toImage();
+    const gls::rectangle position = {gmb_position.x / scale, gmb_position.y / scale, gmb_position.width / scale, gmb_position.height / scale};
+    std::array<float, 3> nlf_parameters = estimateNlfParameters(yCbCrImage.get(), position);
+    std::cout << "Scale " << scale << " nlf_y: " << nlf_parameters[0] << ", nlf_cb: " << nlf_parameters[1] << ", nlf_cr: " << nlf_parameters[2] << std::endl;
+
+//    gls::image<gls::rgb_pixel> output(yCbCrImage->width, yCbCrImage->height);
+//    for (int y = 0; y < output.height; y++) {
+//        for (int x = 0; x < output.width; x++) {
+//            const auto& p = (*yCbCrImage)[y][x];
+//            output[y][x] = {(uint8_t) (255 * p[0]), (uint8_t) (128 * p[1] + 128), (uint8_t) (128 * p[2] + 128)};
+//        }
+//    }
+//    output.write_png_file("/Users/fabio/ColorChecker" + std::to_string(scale) + ".png");
+
+    return nlf_parameters;
+}
+
 template <size_t levels = 4>
 struct PyramidalDenoise {
     typedef gls::cl_image_2d<gls::rgba_pixel_float> imageType;
@@ -837,29 +1042,38 @@ struct PyramidalDenoise {
         }
     }
 
-    imageType* denoise(gls::OpenCLContext* glsContext, const std::array<DenoiseParameters, levels>& denoiseParameters,
+    imageType* denoise(gls::OpenCLContext* glsContext, std::array<DenoiseParameters, levels>* denoiseParameters,
                        imageType* image) {
         // Convert image to YCbCr for Luma/Chroma Denoising
         applyKernel(glsContext, "rgbToYCbCrImage", *image, image);
 
-        for (int i = 0; i < levels-1; i++) {
+        const gls::rectangle gmb_position = {3441, 773, 1531, 991};
+        const auto nflParameters = extractNFLFromColoRchecher(*image, gmb_position, 1);
+        (*denoiseParameters)[0].lumaVariance = nflParameters[0];
+        (*denoiseParameters)[0].chromaVariance = (nflParameters[1] + nflParameters[2]) / 2;
+
+        for (int i = 0, scale = 2; i < levels-1; i++, scale *= 2) {
             resampleImage(glsContext, "downsampleImage", i == 0 ? *image : *imagePyramid[i - 1], imagePyramid[i].get());
+
+            const auto nflParameters = extractNFLFromColoRchecher(*imagePyramid[i], gmb_position, scale);
+            (*denoiseParameters)[i+1].lumaVariance = nflParameters[0];
+            (*denoiseParameters)[i+1].chromaVariance = (nflParameters[1] + nflParameters[2]) / 2;
         }
 
         // Denoise the bottom of the image pyramid
         denoiseImage(glsContext, *(imagePyramid[levels-2]),
-                     denoiseParameters[levels-1],
+                     (*denoiseParameters)[levels-1],
                      denoisedImagePyramid[levels-1].get());
 
         for (int i = levels - 2; i >= 0; i--) {
             // Denoise current layer
             denoiseImage(glsContext, i > 0 ? *(imagePyramid[i - 1]) : *image,
-                         denoiseParameters[i],
+                         (*denoiseParameters)[i],
                          denoisedImagePyramid[i].get());
 
             // Subtract noise from previous layer
             reassembleImage(glsContext, *(denoisedImagePyramid[i]), *(imagePyramid[i]),
-                            *(denoisedImagePyramid[i+1]), denoiseParameters[i].sharpening, denoisedImagePyramid[i].get());
+                            *(denoisedImagePyramid[i+1]), (*denoiseParameters)[i].sharpening, denoisedImagePyramid[i].get());
         }
 
         // Convert result to RGB
@@ -901,33 +1115,33 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
 
     std::array<DenoiseParameters, 4> denoiseParameters = {{
         {
-            .chromaSigma = 0.01,
-            .lumaSigma = 0.0005,
+            .chromaVariance = 0.01,
+            .lumaVariance = 0.0005,
             .radius = 5,
             .sharpening = 1.1
         },
         {
-            .chromaSigma = 0.01,
-            .lumaSigma = 0.001,
+            .chromaVariance = 0.01,
+            .lumaVariance = 0.001,
             .radius = 5,
             .sharpening = 1.3
         },
         {
-            .chromaSigma = 0.005,
-            .lumaSigma = 0.0005,
+            .chromaVariance = 0.005,
+            .lumaVariance = 0.0005,
             .radius = 5,
-            .sharpening = 1.1
+            .sharpening = 1.0
         },
         {
-            .chromaSigma = 0.001,
-            .lumaSigma = 0.0005,
+            .chromaVariance = 0.001,
+            .lumaVariance = 0.0005,
             .radius = 5,
-            .sharpening = 1.1
+            .sharpening = 1.0
         }
     }};
 
     PyramidalDenoise pyramidalDenoise(glsContext.clContext(), clLinearRGBImage);
-    auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, denoiseParameters, &clLinearRGBImage);
+    auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, &denoiseParameters, &clLinearRGBImage);
 
     // --- Image Post Processing ---
 

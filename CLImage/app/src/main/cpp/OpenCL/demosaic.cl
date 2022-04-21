@@ -301,8 +301,8 @@ kernel void yCbCrtoRGBImage(read_only image2d_t inputImage, write_only image2d_t
 }
 
 typedef struct DenoiseParameters {
-    const float chromaSigma;
-    const float lumaSigma;
+    const float lumaVariance;
+    const float chromaVariance;
     const float radius;
     const float sharpening;
 } DenoiseParameters;
@@ -310,16 +310,18 @@ typedef struct DenoiseParameters {
 float3 denoiseLumaChroma(constant DenoiseParameters* parameters, image2d_t inputImage, int2 imageCoordinates) {
     const float3 inputYCC = read_imagef(inputImage, imageCoordinates).xyz;
 
+    float lumaVariance = 0.2 * parameters->lumaVariance * inputYCC.x;
+    float chromaVariance = 2 * parameters->chromaVariance * inputYCC.x;
+
     float3 filtered_pixel = 0;
     float3 kernel_norm = 0;
-    const int filterSize = (int) parameters->radius;
-    for (int y = -filterSize / 2; y <= filterSize / 2; y++) {
-        for (int x = -filterSize / 2; x <= filterSize / 2; x++) {
+    for (int y = -2; y <= 2; y++) {
+        for (int x = -2; x <= 2; x++) {
             float3 inputSampleYCC = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
 
             float3 inputDiff = inputSampleYCC - inputYCC;
-            float lumaWeight = exp(-0.3 * dot(inputDiff.x, inputDiff.x) / (2 * parameters->lumaSigma * parameters->lumaSigma));
-            float chromaWeight = exp(-0.3 * dot(inputDiff.yz, inputDiff.yz) / (2 * parameters->chromaSigma * parameters->chromaSigma));
+            float lumaWeight = exp(-0.3 * dot(inputDiff.x, inputDiff.x) / (2 * lumaVariance));
+            float chromaWeight = exp(-0.3 * dot(inputDiff.yz, inputDiff.yz) / (2 * chromaVariance));
 
             float3 sampleWeight = (float3) (lumaWeight, chromaWeight, chromaWeight);
 
