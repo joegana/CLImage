@@ -37,10 +37,33 @@ typedef struct DemosaicParameters {
 
 typedef struct DenoiseParameters {
     float lumaVariance;
-    float chromaVariance;
-    float radius;
+    float cbVariance;
+    float crVariance;
     float sharpening;
 } DenoiseParameters;
+
+const gls::point bayerOffsets[4][4] = {
+    { {1, 0}, {0, 0}, {0, 1}, {1, 1} }, // grbg
+    { {0, 1}, {0, 0}, {1, 0}, {1, 1} }, // gbrg
+    { {0, 0}, {1, 0}, {1, 1}, {0, 1} }, // rggb
+    { {1, 1}, {1, 0}, {0, 0}, {0, 1} }  // bggr
+};
+
+// sRGB -> XYZ D65 Transform: xyz_rgb * rgb_color -> xyz_color
+const gls::Matrix<3, 3> xyz_rgb = {
+    { 0.4124564, 0.3575761, 0.1804375 },
+    { 0.2126729, 0.7151522, 0.0721750 },
+    { 0.0193339, 0.1191920, 0.9503041 }
+};
+
+// XYZ D65 -> sRGB Transform: rgb_xyz * xyx_color -> rgb_color
+const gls::Matrix<3, 3> rgb_xyz = {
+    {  3.2404542, -1.5371385, -0.4985314 },
+    { -0.9692660,  1.8760108,  0.0415560 },
+    {  0.0556434, -0.2040259,  1.0572252 }
+};
+
+inline uint16_t clamp_uint16(int x) { return x < 0 ? 0 : x > 0xffff ? 0xffff : x; }
 
 void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);
 
@@ -58,4 +81,23 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
 
 gls::image<gls::rgba_pixel>::unique_ptr fastDemosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
                                                           const DemosaicParameters& demosaicParameters, bool auto_white_balance);
+
+gls::Matrix<3, 3> cam_xyz_coeff(gls::Vector<3>& pre_mul, const gls::Matrix<3, 3>& cam_xyz);
+
+void colorcheck(const gls::image<gls::luma_pixel_16>& rawImage, BayerPattern bayerPattern, uint32_t black, std::array<gls::rectangle, 24> gmb_samples);
+
+void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);
+
+void unpackRawMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
+                       gls::tiff_metadata* metadata,
+                       BayerPattern *bayerPattern,
+                       float *black_level,
+                       gls::Vector<4> *scale_mul,
+                       gls::Matrix<3, 3> *rgb_cam,
+                       bool auto_white_balance);
+
+gls::Matrix<3, 3> cam_ycbcr(const gls::Matrix<3, 3>& rgb_cam);
+
+std::array<float, 3> extractNFLFromColoRchecher(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, int scale);
+
 #endif /* demosaic_hpp */

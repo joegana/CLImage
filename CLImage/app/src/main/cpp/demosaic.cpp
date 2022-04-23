@@ -13,1019 +13,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <climits>
-#include <cmath>
-#include <sys/types.h>
-#include <iomanip>
-#include <numeric>
-#include <vector>
-
 #include "demosaic.hpp"
-#include "gls_color_science.hpp"
-#include "gls_linalg.hpp"
+#include "demosaic_cl.hpp"
 
-#include "gls_cl.hpp"
 #include "gls_logging.h"
-#include "gls_cl_image.hpp"
 
 static const char* TAG = "CLImage Pipeline";
-
-enum { red = 0, green = 1, blue = 2, green2 = 3 };
-
-static const std::array<std::array<gls::point, 4>, 4> bayerOffsets = {{
-    { gls::point{1, 0}, gls::point{0, 0}, gls::point{0, 1}, gls::point{1, 1} }, // grbg
-    { gls::point{0, 1}, gls::point{0, 0}, gls::point{1, 0}, gls::point{1, 1} }, // gbrg
-    { gls::point{0, 0}, gls::point{1, 0}, gls::point{1, 1}, gls::point{0, 1} }, // rggb
-    { gls::point{1, 1}, gls::point{1, 0}, gls::point{0, 0}, gls::point{0, 1} }  // bggr
-}};
-
-inline uint16_t clamp(int x) { return x < 0 ? 0 : x > 0xffff ? 0xffff : x; }
-
-void interpolateGreen(const gls::image<gls::luma_pixel_16>& rawImage,
-                      gls::image<gls::rgb_pixel_16>* rgbImage, BayerPattern bayerPattern) {
-    const int width = rawImage.width;
-    const int height = rawImage.height;
-
-    auto offsets = bayerOffsets[bayerPattern];
-    const gls::point r = offsets[red];
-    const gls::point g = offsets[green];
-
-    // copy RAW data to RGB layer and remove hot pixels
-    for (int y = 0; y < height; y++) {
-        int color = (y & 1) == (r.y & 1) ? red : blue;
-        int x0 = (y & 1) == (g.y & 1) ? g.x + 1 : g.x;
-        for (int x = 0; x < width; x++) {
-            bool colorPixel = (x & 1) == (x0 & 1);
-            int channel = colorPixel ? color : green;
-
-            int value = rawImage[y][x];
-            if (x >= 2 && x < width - 2 && y >= 2 && y < height - 2) {
-                int v[12];
-                int n;
-                if (!colorPixel) {
-                    n = 8;
-                    v[0] = rawImage[y - 1][x - 1];
-                    v[1] = rawImage[y - 1][x + 1];
-                    v[2] = rawImage[y + 1][x - 1];
-                    v[3] = rawImage[y + 1][x + 1];
-
-                    v[4] = 2 * rawImage[y - 1][x];
-                    v[5] = 2 * rawImage[y + 1][x];
-                    v[6] = 2 * rawImage[y][x + 1];
-                    v[7] = 2 * rawImage[y][x + 1];
-                } else {
-                    n = 12;
-                    v[0] = rawImage[y - 2][x];
-                    v[1] = rawImage[y + 2][x];
-                    v[2] = rawImage[y][x - 2];
-                    v[3] = rawImage[y][x + 2];
-
-                    v[4] = 2 * rawImage[y - 1][x - 1];
-                    v[5] = 2 * rawImage[y - 1][x + 1];
-                    v[6] = 2 * rawImage[y + 1][x - 1];
-                    v[7] = 2 * rawImage[y + 1][x + 1];
-
-                    v[8] = 2 * rawImage[y - 1][x];
-                    v[9] = 2 * rawImage[y + 1][x];
-                    v[10] = 2 * rawImage[y][x - 1];
-                    v[11] = 2 * rawImage[y][x + 1];
-                };
-                bool replace = true;
-                for (int i = 0; i < n; i++)
-                    if (value < 2 * v[i]) {
-                        replace = false;
-                        break;
-                    }
-                if (replace) value = (v[0] + v[1] + v[2] + v[3]) / 4;
-            }
-            (*rgbImage)[y][x][channel] = value;
-        }
-    }
-
-    // green channel interpolation
-
-    for (int y = 2; y < height - 2; y++) {
-        int color = (y & 1) == (r.y & 1) ? red : blue;
-        int x0 = (y & 1) == (g.y & 1) ? g.x + 1 : g.x;
-
-        int g_left  = (*rgbImage)[y][x0 - 1][green];
-        int c_xy    = (*rgbImage)[y][x0][color];
-        int c_left  = (*rgbImage)[y][x0 - 2][color];
-
-        for (int x = x0 + 2; x < width - 2; x += 2) {
-            int g_right = (*rgbImage)[y][x + 1][green];
-            int g_up    = (*rgbImage)[y - 1][x][green];
-            int g_down  = (*rgbImage)[y + 1][x][green];
-            int g_dh    = abs(g_left - g_right);
-            int g_dv    = abs(g_up - g_down);
-
-            int c_right = (*rgbImage)[y][x + 2][color];
-            int c_up    = (*rgbImage)[y - 2][x][color];
-            int c_down  = (*rgbImage)[y + 2][x][color];
-            int c_dh    = abs(c_left + c_right - 2 * c_xy);
-            int c_dv    = abs(c_up + c_down - 2 * c_xy);
-
-            // Minimum derivative value for edge directed interpolation (avoid aliasing)
-            int dThreshold = 1200;
-
-            // we're doing edge directed bilinear interpolation on the green channel,
-            // which is a low pass operation (averaging), so we add some signal from the
-            // high frequencies of the observed color channel
-
-            int sample;
-            if (g_dv + c_dv > dThreshold && g_dv + c_dv > g_dh + c_dh) {
-                sample = (g_left + g_right) / 2;
-                if (sample < 4 * c_xy && c_xy < 4 * sample) {
-                    sample += (c_xy - (c_left + c_right) / 2) / 4;
-                }
-            } else if (g_dh + c_dh > dThreshold && g_dh + c_dh > g_dv + c_dv) {
-                sample = (g_up + g_down) / 2;
-                if (sample < 4 * c_xy && c_xy < 4 * sample) {
-                    sample += (c_xy - (c_up + c_down) / 2) / 4;
-                }
-            } else {
-                sample = (g_up + g_left + g_down + g_right) / 4;
-                if (sample < 4 * c_xy && c_xy < 4 * sample) {
-                    sample += (c_xy - (c_left + c_right + c_up + c_down) / 4) / 8;
-                }
-            }
-
-            (*rgbImage)[y][x][green] = clamp(sample);
-            g_left = g_right;
-            c_left = c_xy;
-            c_xy   = c_right;
-        }
-    }
-}
-
-void interpolateRedBlue(gls::image<gls::rgb_pixel_16>* image, BayerPattern bayerPattern) {
-    const int width = image->width;
-    const int height = image->height;
-
-    auto offsets = bayerOffsets[bayerPattern];
-
-    for (int y = 1; y < height - 1; y++) {
-        for (int x = 1; x < width - 1; x++) {
-            for (int color : {red, blue}) {
-                const gls::point c = offsets[color];
-
-                if (((x + c.x) & 1) != (c.x & 1) || ((y + c.y) & 1) != (c.y & 1)) {
-                    int sample;
-                    int cg = (*image)[y + c.y][x + c.x][green];
-
-                    if (((x + c.x) & 1) != (c.x & 1) && ((y + c.y) & 1) != (c.y & 1)) {
-                        // Pixel at color location
-                        int g_ne = (*image)[y + c.y + 1][x + c.x - 1][green];
-                        int g_nw = (*image)[y + c.y + 1][x + c.x + 1][green];
-                        int g_sw = (*image)[y + c.y - 1][x + c.x + 1][green];
-                        int g_se = (*image)[y + c.y - 1][x + c.x - 1][green];
-
-                        int c_ne = g_ne - (*image)[y + c.y + 1][x + c.x - 1][color];
-                        int c_nw = g_nw - (*image)[y + c.y + 1][x + c.x + 1][color];
-                        int c_sw = g_sw - (*image)[y + c.y - 1][x + c.x + 1][color];
-                        int c_se = g_se - (*image)[y + c.y - 1][x + c.x - 1][color];
-
-                        int d_ne_sw = abs(c_ne - c_sw);
-                        int d_nw_se = abs(c_nw - c_se);
-
-                        // Minimum gradient for edge directed interpolation
-                        int dThreshold = 800;
-                        if (d_ne_sw > dThreshold && d_ne_sw > d_nw_se) {
-                            sample = cg - (c_nw + c_se) / 2;
-                        } else if (d_nw_se > dThreshold && d_nw_se > d_ne_sw) {
-                            sample = cg - (c_ne + c_sw) / 2;
-                        } else {
-                            sample = cg - (c_ne + c_sw + c_nw + c_se) / 4;
-                        }
-                    } else if (((x + c.x) & 1) == (c.x & 1) && ((y + c.y) & 1) != (c.y & 1)) {
-                        // Pixel at green location - vertical
-                        int g_up    = (*image)[y + c.y - 1][x + c.x][green];
-                        int g_down  = (*image)[y + c.y + 1][x + c.x][green];
-
-                        int c_up    = g_up - (*image)[y + c.y - 1][x + c.x][color];
-                        int c_down  = g_down - (*image)[y + c.y + 1][x + c.x][color];
-
-                        sample = cg - (c_up + c_down) / 2;
-                    } else {
-                        // Pixel at green location - horizontal
-                        int g_left  = (*image)[y + c.y][x + c.x - 1][green];
-                        int g_right = (*image)[y + c.y][x + c.x + 1][green];
-
-                        int c_left  = g_left - (*image)[y + c.y][x + c.x - 1][color];
-                        int c_right = g_right - (*image)[y + c.y][x + c.x + 1][color];
-
-                        sample = cg - (c_left + c_right) / 2;
-                    }
-
-                    (*image)[y + c.y][x + c.x][color] = clamp(sample);
-                }
-            }
-        }
-    }
-}
-
-// sRGB -> XYZ D65 Transform: xyz_rgb * rgb_color -> xyz_color
-const gls::Matrix<3, 3> xyz_rgb = {
-    { 0.4124564, 0.3575761, 0.1804375 },
-    { 0.2126729, 0.7151522, 0.0721750 },
-    { 0.0193339, 0.1191920, 0.9503041 }
-};
-
-// XYZ D65 -> sRGB Transform: rgb_xyz * xyx_color -> rgb_color
-const gls::Matrix<3, 3> rgb_xyz = {
-    {  3.2404542, -1.5371385, -0.4985314 },
-    { -0.9692660,  1.8760108,  0.0415560 },
-    {  0.0556434, -0.2040259,  1.0572252 }
-};
-
-gls::Matrix<3, 3> cam_xyz_coeff(gls::Vector<3>& pre_mul, const gls::Matrix<3, 3>& cam_xyz) {
-    // Compute sRGB -> XYZ -> Camera
-    auto rgb_cam = cam_xyz * xyz_rgb;
-
-    // Normalize rgb_cam so that rgb_cam * (1,1,1) == (1,1,1).
-    // This maximizes the uint16 dynamic range and makes sure
-    // that highlight clipping is white in both camera and target
-    // color spaces, so that clipping doesn't turn pink
-
-    auto cam_white = rgb_cam * gls::Vector<3>({ 1, 1, 1 });
-
-    gls::Matrix<3, 3> mPreMul = {
-        { 1 / cam_white[0], 0, 0 },
-        { 0, 1 / cam_white[1], 0 },
-        { 0, 0, 1 / cam_white[2] }
-    };
-
-    for (int i = 0; i < 3; i++) {
-        if (cam_white[i] > 0.00001) {
-            pre_mul[i] = 1 / cam_white[i];
-        } else {
-            throw std::range_error("");
-        }
-    }
-
-    // Return Camera -> sRGB
-    return inverse(mPreMul * rgb_cam);
-}
-
-gls::rectangle alignToQuad(const gls::rectangle& rect) {
-    gls::rectangle alignedRect = rect;
-    if (alignedRect.y & 1) {
-        alignedRect.y += 1;
-        alignedRect.height -= 1;
-    }
-    if (alignedRect.height & 1) {
-        alignedRect.height -= 1;
-    }
-    if (alignedRect.x & 1) {
-        alignedRect.x += 1;
-        alignedRect.width -= 1;
-    }
-    if (alignedRect.width & 1) {
-        alignedRect.width -= 1;
-    }
-    return alignedRect;
-}
-
-void colorcheck(const gls::image<gls::luma_pixel_16>& rawImage, BayerPattern bayerPattern, uint32_t black, std::array<gls::rectangle, 24> gmb_samples) {
-// ColorChecker Chart under 6500-kelvin illumination
-  static gls::Matrix<gmb_samples.size(), 3> gmb_xyY = {
-    { 0.400, 0.350, 10.1 },        // Dark Skin
-    { 0.377, 0.345, 35.8 },        // Light Skin
-    { 0.247, 0.251, 19.3 },        // Blue Sky
-    { 0.337, 0.422, 13.3 },        // Foliage
-    { 0.265, 0.240, 24.3 },        // Blue Flower
-    { 0.261, 0.343, 43.1 },        // Bluish Green
-    { 0.506, 0.407, 30.1 },        // Orange
-    { 0.211, 0.175, 12.0 },        // Purplish Blue
-    { 0.453, 0.306, 19.8 },        // Moderate Red
-    { 0.285, 0.202, 6.6  },        // Purple
-    { 0.380, 0.489, 44.3 },        // Yellow Green
-    { 0.473, 0.438, 43.1 },        // Orange Yellow
-    { 0.187, 0.129, 6.1  },        // Blue
-    { 0.305, 0.478, 23.4 },        // Green
-    { 0.539, 0.313, 12.0 },        // Red
-    { 0.448, 0.470, 59.1 },        // Yellow
-    { 0.364, 0.233, 19.8 },        // Magenta
-    { 0.196, 0.252, 19.8 },        // Cyan
-    { 0.310, 0.316, 90.0 },        // White
-    { 0.310, 0.316, 59.1 },        // Neutral 8
-    { 0.310, 0.316, 36.2 },        // Neutral 6.5
-    { 0.310, 0.316, 19.8 },        // Neutral 5
-    { 0.310, 0.316, 9.0 },         // Neutral 3.5
-    { 0.310, 0.316, 3.1 } };       // Black
-
-    const auto offsets = bayerOffsets[bayerPattern];
-
-    auto* writeRawImage = (gls::image<gls::luma_pixel_16>*) &rawImage;
-
-    gls::Matrix<gmb_samples.size(), 4> gmb_cam;
-    gls::Matrix<gmb_samples.size(), 3> gmb_xyz;
-
-    for (int sq = 0; sq < gmb_samples.size(); sq++) {
-        std::array<int, 3> count { /* zero */ };
-        auto patch = alignToQuad(gmb_samples[sq]);
-        for (int y = patch.y; y < patch.y + patch.height; y += 2) {
-            for (int x = patch.x; x < patch.x + patch.width; x += 2) {
-                for (int c = 0; c < 4; c++) {
-                    const auto& o = offsets[c];
-                    int val = rawImage[y + o.y][x + o.x];
-                    gmb_cam[sq][c == 3 ? 1 : c] += (float) val;
-                    count[c == 3 ? 1 : c]++;
-                    // Mark image to identify sampled areas
-                    (*writeRawImage)[y + o.y][x + o.x] = black + (val - black) / 2;
-                }
-            }
-        }
-
-        for (int c = 0; c < 3; c++) {
-            gmb_cam[sq][c] = gmb_cam[sq][c] / (float) count[c] - (float) black;
-        }
-        gmb_xyz[sq][0] = gmb_xyY[sq][2] * gmb_xyY[sq][0] / gmb_xyY[sq][1];
-        gmb_xyz[sq][1] = gmb_xyY[sq][2];
-        gmb_xyz[sq][2] = gmb_xyY[sq][2] * (1 - gmb_xyY[sq][0] - gmb_xyY[sq][1]) / gmb_xyY[sq][1];
-    }
-
-    gls::Matrix<gmb_samples.size(), 3> inverse = pseudoinverse(gmb_xyz);
-
-    gls::Matrix<3, 3> cam_xyz;
-    for (int pass=0; pass < 2; pass++) {
-        for (int i = 0; i < 3 /* colors */; i++) {
-            for (int j = 0; j < 3; j++) {
-                cam_xyz[i][j] = 0;
-                for (int k = 0; k < gmb_samples.size(); k++)
-                    cam_xyz[i][j] += gmb_cam[k][i] * inverse[k][j];
-            }
-        }
-
-        gls::Vector<3> pre_mul;
-        cam_xyz_coeff(pre_mul, cam_xyz);
-
-        gls::Vector<4> balance;
-        for (int c = 0; c < 4; c++) {
-            balance[c] = pre_mul[c == 3 ? 1 : c] * gmb_cam[20][c];
-        }
-        for (int sq = 0; sq < gmb_samples.size(); sq++) {
-            for (int c = 0; c < 4; c++) {
-                gmb_cam[sq][c] *= balance[c];
-            }
-        }
-    }
-
-    float norm = 1 / (cam_xyz[1][0] + cam_xyz[1][1] + cam_xyz[1][2]);
-    printf("Color Matrix: ");
-    for (int c = 0; c < 3; c++) {
-        for (int j = 0; j < 3; j++)
-            printf("%.4f, ", cam_xyz[c][j] * norm);
-    }
-    printf("\n");
-}
-
-void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern) {
-    const auto offsets = bayerOffsets[bayerPattern];
-
-    std::array<float, 8> fsum { /* zero */ };
-    for (int y = 0; y < rawImage.height/2; y += 8) {
-        for (int x = 0; x < rawImage.width/2; x += 8) {
-            std::array<uint32_t, 8> sum { /* zero */ };
-            for (int j = y; j < 8 && j < rawImage.height/2; j++) {
-                for (int i = x; i < 8 && i < rawImage.width/2; i++) {
-                    for (int c = 0; c < 4; c++) {
-                        const auto& o = offsets[c];
-                        uint32_t val = rawImage[2 * j + o.y][2 * i + o.x];
-                        if (val > white - 25) {
-                            goto skip_block;
-                        }
-                        if ((val -= black) < 0) {
-                            val = 0;
-                        }
-                        sum[c] += val;
-                        sum[c+4]++;
-                    }
-                }
-            }
-            for (int i = 0; i < 8; i++) {
-                fsum[i] += (float) sum[i];
-            }
-            skip_block:
-            ;
-        }
-    }
-    // Aggregate green2 data to green
-    fsum[1] += fsum[3];
-    fsum[5] += fsum[7];
-
-    for (int c = 0; c < 3; c++) {
-        if (fsum[c] != 0) {
-            (*wb_mul)[c] = fsum[c+4] / fsum[c];
-        }
-    }
-    // Normalize with green = 1
-    *wb_mul = *wb_mul / (*wb_mul)[1];
-}
-
-// Coordinates of the GretagMacbeth ColorChecker squares
-// x, y, width, height from 2022-04-07-17-21-33-023.png
-//static std::array<gls::rectangle, 24> gmb_samples = {{
-//    { 4729, 3390, 80, 80 },
-//    { 4597, 3385, 66, 81 },
-//    { 4459, 3380, 71, 74 },
-//    { 4317, 3373, 70, 71 },
-//    { 4172, 3366, 86, 78 },
-//    { 4032, 3357, 86, 76 },
-//    { 4742, 3256, 70, 71 },
-//    { 4599, 3251, 81, 74 },
-//    { 4462, 3244, 75, 73 },
-//    { 4321, 3230, 75, 83 },
-//    { 4184, 3223, 71, 78 },
-//    { 4040, 3218, 80, 74 },
-//    { 4751, 3118, 70, 73 },
-//    { 4609, 3113, 72, 69 },
-//    { 4469, 3106, 72, 72 },
-//    { 4330, 3098, 75, 73 },
-//    { 4189, 3097, 79, 62 },
-//    { 4054, 3091, 69, 63 },
-//    { 4757, 2979, 71, 74 },
-//    { 4616, 2975, 65, 73 },
-//    { 4475, 2965, 75, 74 },
-//    { 4341, 2959, 67, 73 },
-//    { 4200, 2952, 71, 72 },
-//    { 4061, 2942, 72, 74 },
-//}};
-
-// Coordinates of the GretagMacbeth ColorChecker squares
-// x, y, width, height from 2022-04-12-10-43-56-566.dng
-static std::array<gls::rectangle, 24> gmb_samples = {{
-    { 4886, 2882, 285, 273 },
-    { 4505, 2899, 272, 235 },
-    { 4122, 2892, 262, 240 },
-    { 3742, 2900, 256, 225 },
-    { 3352, 2897, 258, 227 },
-    { 2946, 2904, 282, 231 },
-    { 4900, 2526, 274, 244 },
-    { 4513, 2526, 262, 237 },
-    { 4133, 2529, 235, 227 },
-    { 3733, 2523, 254, 237 },
-    { 3347, 2530, 245, 234 },
-    { 2932, 2531, 283, 233 },
-    { 4899, 2151, 283, 252 },
-    { 4519, 2155, 261, 245 },
-    { 4119, 2157, 269, 245 },
-    { 3737, 2160, 246, 226 },
-    { 3335, 2168, 261, 239 },
-    { 2957, 2183, 233, 214 },
-    { 4923, 1784, 265, 243 },
-    { 4531, 1801, 250, 219 },
-    { 4137, 1792, 234, 226 },
-    { 3729, 1790, 254, 230 },
-    { 3337, 1793, 250, 232 },
-    { 2917, 1800, 265, 228 },
-}};
-
-
-void unpackRawMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
-                       gls::tiff_metadata* metadata,
-                       BayerPattern *bayerPattern,
-                       float *black_level,
-                       gls::Vector<4> *scale_mul,
-                       gls::Matrix<3, 3> *rgb_cam,
-                       bool auto_white_balance) {
-    const auto color_matrix1 = getVector<float>(*metadata, TIFFTAG_COLORMATRIX1);
-    const auto color_matrix2 = getVector<float>(*metadata, TIFFTAG_COLORMATRIX2);
-
-    // If present ColorMatrix2 is usually D65 and ColorMatrix1 is Standard Light A
-    const auto& color_matrix = color_matrix2.empty() ? color_matrix1 : color_matrix2;
-
-    auto as_shot_neutral = getVector<float>(*metadata, TIFFTAG_ASSHOTNEUTRAL);
-    const auto black_level_vec = getVector<float>(*metadata, TIFFTAG_BLACKLEVEL);
-    const auto white_level_vec = getVector<uint32_t>(*metadata, TIFFTAG_WHITELEVEL);
-    const auto cfa_pattern = getVector<uint8_t>(*metadata, TIFFTAG_CFAPATTERN);
-
-    *black_level = black_level_vec.empty() ? 0 : black_level_vec[0];
-    const uint32_t white_level = white_level_vec.empty() ? 0xffff : white_level_vec[0];
-
-    *bayerPattern = std::memcmp(cfa_pattern.data(), "\00\01\01\02", 4) == 0 ? BayerPattern::rggb
-                  : std::memcmp(cfa_pattern.data(), "\02\01\01\00", 4) == 0 ? BayerPattern::bggr
-                  : std::memcmp(cfa_pattern.data(), "\01\00\02\01", 4) == 0 ? BayerPattern::grbg
-                  : BayerPattern::gbrg;
-
-    std::cout << "as_shot_neutral: " << gls::Vector<3>(as_shot_neutral) << std::endl;
-
-    // Uncomment this to characterize sensor
-    // colorcheck(rawImage, *bayerPattern, *black_level, gmb_samples);
-
-    gls::Vector<3> cam_mul = 1.0 / gls::Vector<3>(as_shot_neutral);
-
-    // TODO: this should be CameraCalibration * ColorMatrix * AsShotWhite
-    gls::Matrix<3, 3> cam_xyz = color_matrix;
-
-    std::cout << "cam_xyz:\n" << cam_xyz << std::endl;
-
-    gls::Vector<3> pre_mul;
-    *rgb_cam = cam_xyz_coeff(pre_mul, cam_xyz);
-
-    std::cout << "*** pre_mul: " << pre_mul << std::endl;
-    std::cout << "*** cam_mul: " << cam_mul << std::endl;
-
-    // Save the whitening transformation
-    const auto inv_cam_white = pre_mul;
-
-    if (auto_white_balance) {
-        white_balance(rawImage, &cam_mul, white_level, *black_level, *bayerPattern);
-
-        printf("Auto White Balance: %f, %f, %f\n", cam_mul[0], cam_mul[1], cam_mul[2]);
-
-        // Convert cam_mul from camera to XYZ
-        const auto cam_mul_xyz = cam_xyz * cam_mul;
-        std::cout << "cam_mul_xyz: " << cam_mul_xyz << ", CCT: " << XYZtoCorColorTemp(cam_mul_xyz) << std::endl;
-
-        for (int c = 0; c < 3; c++) {
-            as_shot_neutral[c] = 1 / cam_mul[c];
-        }
-        (*metadata)[TIFFTAG_ASSHOTNEUTRAL] = as_shot_neutral;
-    }
-
-    gls::Matrix<3, 3> mCamMul = {
-        { pre_mul[0] / cam_mul[0], 0, 0 },
-        { 0, pre_mul[1] / cam_mul[1], 0 },
-        { 0, 0, pre_mul[2] / cam_mul[2] }
-    };
-
-    // If cam_mul is available use that instead of pre_mul
-    for (int i = 0; i < 3; i++) {
-        pre_mul[i] = cam_mul[i];
-    }
-
-    {
-        const gls::Vector<3> d65_white = { 0.95047, 1.0, 1.08883 };
-        const gls::Vector<3> d50_white = { 0.9642, 1.0000, 0.8249 };
-
-        std::cout << "XYZ D65 White -> sRGB: " << rgb_xyz * d65_white << std::endl;
-        std::cout << "sRGB White -> XYZ D65: " << xyz_rgb * gls::Vector({1, 1, 1}) << std::endl;
-        std::cout << "inverse(cam_xyz) * (1 / pre_mul): " << inverse(cam_xyz) * (1 / pre_mul) << std::endl;
-
-        auto cam_white = inverse(cam_xyz) * xyz_rgb * gls::Vector<3>({ 1, 1, 1 });
-        std::cout << "inverse(cam_xyz) * cam_white: " << cam_xyz * cam_white << ", CCT: " << XYZtoCorColorTemp(cam_xyz * cam_white) << std::endl;
-        std::cout << "xyz_rgb * gls::Vector<3>({ 1, 1, 1 }): " << xyz_rgb * gls::Vector<3>({ 1, 1, 1 }) << ", CCT: " << XYZtoCorColorTemp(xyz_rgb * gls::Vector<3>({ 1, 1, 1 })) << std::endl;
-
-        const auto wb_out = xyz_rgb * *rgb_cam * mCamMul * gls::Vector({1, 1, 1});
-        std::cout << "wb_out: " << wb_out << ", CCT: " << XYZtoCorColorTemp(wb_out) << std::endl;
-
-        const auto no_wb_out = xyz_rgb * *rgb_cam * (1 / inv_cam_white);
-        std::cout << "no_wb_out: " << wb_out << ", CCT: " << XYZtoCorColorTemp(no_wb_out) << std::endl;
-    }
-
-    // Scale Input Image
-    auto minmax = std::minmax_element(std::begin(pre_mul), std::end(pre_mul));
-    for (int c = 0; c < 4; c++) {
-        int pre_mul_idx = c == 3 ? 1 : c;
-        printf("pre_mul[c]: %f, *minmax.second: %f, white_level: %d\n", pre_mul[pre_mul_idx], *minmax.second, white_level);
-        (*scale_mul)[c] = (pre_mul[pre_mul_idx] / *minmax.first) * 65535.0 / (white_level - *black_level);
-    }
-    printf("scale_mul: %f, %f, %f, %f\n", (*scale_mul)[0], (*scale_mul)[1], (*scale_mul)[2], (*scale_mul)[3]);
-}
-
-gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls::luma_pixel_16>& rawImage,
-                                                           gls::tiff_metadata* metadata, bool auto_white_balance) {
-    BayerPattern bayerPattern;
-    float black_level;
-    gls::Vector<4> scale_mul;
-    gls::Matrix<3, 3> rgb_cam;
-
-    unpackRawMetadata(rawImage, metadata, &bayerPattern, &black_level, &scale_mul, &rgb_cam, auto_white_balance);
-
-    LOG_INFO(TAG) << "Begin demosaicing image (CPU)..." << std::endl;
-
-    const auto offsets = bayerOffsets[bayerPattern];
-    gls::image<gls::luma_pixel_16> scaledRawImage = gls::image<gls::luma_pixel_16>(rawImage.width, rawImage.height);
-    for (int y = 0; y < rawImage.height / 2; y++) {
-        for (int x = 0; x < rawImage.width / 2; x++) {
-            for (int c = 0; c < 4; c++) {
-                const auto& o = offsets[c];
-                scaledRawImage[2 * y + o.y][2 * x + o.x] = clamp(scale_mul[c] * (rawImage[2 * y + o.y][2 * x + o.x] - black_level));
-            }
-        }
-    }
-
-    auto rgbImage = std::make_unique<gls::image<gls::rgb_pixel_16>>(rawImage.width, rawImage.height);
-
-    printf("interpolating green channel...\n");
-    interpolateGreen(scaledRawImage, rgbImage.get(), bayerPattern);
-
-    printf("interpolating red and blue channels...\n");
-    interpolateRedBlue(rgbImage.get(), bayerPattern);
-
-    // Transform to RGB space
-    for (int y = 0; y < rgbImage->height; y++) {
-        for (int x = 0; x < rgbImage->width; x++) {
-            auto& p = (*rgbImage)[y][x];
-            const auto op = rgb_cam * /* mCamMul * */ gls::Vector<3>({ (float) p[0], (float) p[1], (float) p[2] });
-            p = { clamp(op[0]), clamp(op[1]), clamp(op[2]) };
-        }
-    }
-
-    return rgbImage;
-}
-
-/*
- OpenCL RAW Image Demosaic.
- NOTE: This code can throw exceptions, to facilitate debugging no exception handler is provided, so things can crash in place.
- */
-
-void scaleRawData(gls::OpenCLContext* glsContext,
-                 const gls::cl_image_2d<gls::luma_pixel_16>& rawImage,
-                 gls::cl_image_2d<gls::luma_pixel_float>* scaledRawImage,
-                 BayerPattern bayerPattern, gls::Vector<4> scaleMul, float blackLevel) {
-    // Load the shader source
-    const auto program = glsContext->loadProgram("demosaic");
-
-    // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
-                                    cl::Image2D,  // scaledRawImage
-                                    int,          // bayerPattern
-                                    cl::Buffer,   // scaleMul
-                                    float         // blackLevel
-                                    >(program, "scaleRawData");
-
-    cl::Buffer scaleMulBuffer(scaleMul.begin(), scaleMul.end(), true);
-
-    // Work on one Quad (2x2) at a time
-    kernel(gls::OpenCLContext::buildEnqueueArgs(scaledRawImage->width/2, scaledRawImage->height/2),
-           rawImage.getImage2D(), scaledRawImage->getImage2D(), bayerPattern, scaleMulBuffer, blackLevel);
-}
-
-void interpolateGreen(gls::OpenCLContext* glsContext,
-                     const gls::cl_image_2d<gls::luma_pixel_float>& rawImage,
-                     gls::cl_image_2d<gls::luma_pixel_float>* greenImage,
-                     BayerPattern bayerPattern) {
-    // Load the shader source
-    const auto program = glsContext->loadProgram("demosaic");
-
-    // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
-                                    cl::Image2D,  // greenImage
-                                    int           // bayerPattern
-                                    >(program, "interpolateGreen");
-
-    // Schedule the kernel on the GPU
-    kernel(gls::OpenCLContext::buildEnqueueArgs(greenImage->width, greenImage->height),
-           rawImage.getImage2D(), greenImage->getImage2D(), bayerPattern);
-}
-
-void interpolateRedBlue(gls::OpenCLContext* glsContext,
-                       const gls::cl_image_2d<gls::luma_pixel_float>& rawImage,
-                       const gls::cl_image_2d<gls::luma_pixel_float>& greenImage,
-                       gls::cl_image_2d<gls::rgba_pixel_float>* rgbImage,
-                       BayerPattern bayerPattern) {
-    // Load the shader source
-    const auto program = glsContext->loadProgram("demosaic");
-
-    // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
-                                    cl::Image2D,  // greenImage
-                                    cl::Image2D,  // rgbImage
-                                    int           // bayerPattern
-                                    >(program, "interpolateRedBlue");
-
-    // Schedule the kernel on the GPU
-    kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
-           rawImage.getImage2D(), greenImage.getImage2D(), rgbImage->getImage2D(), bayerPattern);
-}
-
-void fasteDebayer(gls::OpenCLContext* glsContext,
-                  const gls::cl_image_2d<gls::luma_pixel_float>& rawImage,
-                  gls::cl_image_2d<gls::rgba_pixel_float>* rgbImage,
-                  BayerPattern bayerPattern) {
-    assert(rawImage.width == 2 * rgbImage->width && rawImage.height == 2 * rgbImage->height);
-
-    // Load the shader source
-    const auto program = glsContext->loadProgram("demosaic");
-
-    // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
-                                    cl::Image2D,  // rgbImage
-                                    int           // bayerPattern
-                                    >(program, "fastDebayer");
-
-    // Schedule the kernel on the GPU
-    kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
-           rawImage.getImage2D(), rgbImage->getImage2D(), bayerPattern);
-}
-
-template <typename T>
-void applyKernel(gls::OpenCLContext* glsContext, const std::string& kernelName,
-                const gls::cl_image_2d<T>& inputImage,
-                gls::cl_image_2d<T>* outputImage) {
-    // Load the shader source
-    const auto program = glsContext->loadProgram("demosaic");
-
-    // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
-                                    cl::Image2D   // outputImage
-                                    >(program, kernelName);
-
-    // Schedule the kernel on the GPU
-    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImage.getImage2D(), outputImage->getImage2D());
-}
-
-template <typename T>
-void resampleImage(gls::OpenCLContext* glsContext, const std::string& kernelName, const gls::cl_image_2d<T>& inputImage,
-                   gls::cl_image_2d<T>* outputImage) {
-    // Load the shader source
-    const auto program = glsContext->loadProgram("demosaic");
-
-    const auto linear_sampler = cl::Sampler(glsContext->clContext(), true, CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_LINEAR);
-
-    // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
-                                    cl::Image2D,  // outputImage
-                                    cl::Sampler
-                                    >(program, kernelName);
-
-    // Schedule the kernel on the GPU
-    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImage.getImage2D(), outputImage->getImage2D(), linear_sampler);
-}
-
-template <typename T>
-void reassembleImage(gls::OpenCLContext* glsContext, const gls::cl_image_2d<T>& inputImageDenoised0,
-                     const gls::cl_image_2d<T>& inputImage1, const gls::cl_image_2d<T>& inputImageDenoised1,
-                     float sharpening, gls::cl_image_2d<T>* outputImage) {
-    // Load the shader source
-    const auto program = glsContext->loadProgram("demosaic");
-
-    const auto linear_sampler = cl::Sampler(glsContext->clContext(), true, CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_LINEAR);
-
-    // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImageDenoised0
-                                    cl::Image2D,  // inputImage1
-                                    cl::Image2D,  // inputImageDenoised1
-                                    float,        // sharpening
-                                    cl::Image2D,  // outputImage
-                                    cl::Sampler   // linear_sampler
-                                    >(program, "reassembleImage");
-
-    // Schedule the kernel on the GPU
-    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImageDenoised0.getImage2D(), inputImage1.getImage2D(), inputImageDenoised1.getImage2D(),
-           sharpening, outputImage->getImage2D(), linear_sampler);
-}
-
-void convertTosRGB(gls::OpenCLContext* glsContext,
-                  const gls::cl_image_2d<gls::rgba_pixel_float>& linearImage,
-                  gls::cl_image_2d<gls::rgba_pixel>* rgbImage,
-                  const gls::Matrix<3, 3>& transform, const DemosaicParameters& demosaicParameters) {
-    // Load the shader source
-    const auto program = glsContext->loadProgram("demosaic");
-
-    // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // linearImage
-                                    cl::Image2D,  // rgbImage
-                                    cl::Buffer,   // transform
-                                    cl::Buffer    // demosaicParameters
-                                    >(program, "convertTosRGB");
-
-    // parameter "constant float3 transform[3]". NOTE: float3 are mapped in memory as float4
-    std::array<std::array<float, 4>, 3> paddedTransform;
-    for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 3; c++) {
-            paddedTransform[r][c] = transform[r][c];
-        }
-    }
-    cl::Buffer transformBuffer(paddedTransform.begin(), paddedTransform.end(), true);
-
-    // parameter "constant DemosaicParameters *demosaicParameters".
-    cl::Buffer demosaicParametersBuffer(glsContext->clContext(), CL_MEM_USE_HOST_PTR, sizeof(DemosaicParameters), (void *) &demosaicParameters);
-
-    // Schedule the kernel on the GPU
-    kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
-           linearImage.getImage2D(), rgbImage->getImage2D(), transformBuffer, demosaicParametersBuffer);
-}
-
-// --- Multiscale Noise Reduction ---
-// https://www.cns.nyu.edu/pub/lcv/rajashekar08a.pdf
-
-void denoiseImage(gls::OpenCLContext* glsContext,
-                  const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                  const DenoiseParameters& denoiseParameters,
-                  gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
-    // Load the shader source
-    const auto program = glsContext->loadProgram("demosaic");
-
-    // Bind the kernel parameters
-    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
-                                    cl::Buffer,   // denoiseParameters
-                                    cl::Image2D   // outputImage
-                                    >(program, "denoiseImage");
-
-    cl::Buffer denoiseParametersBuffer(glsContext->clContext(), CL_MEM_USE_HOST_PTR, sizeof(DenoiseParameters), (void *) &denoiseParameters);
-
-    // Schedule the kernel on the GPU
-    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImage.getImage2D(), denoiseParametersBuffer, outputImage->getImage2D());
-}
-
-enum GMBColors {
-    DarkSkin        = 0,
-    LightSkin       = 1,
-    BlueSky         = 2,
-    Foliage         = 3,
-    BlueFlower      = 4,
-    BluishGreen     = 5,
-    Orange          = 6,
-    PurplishBlue    = 7,
-    ModerateRed     = 8,
-    Purple          = 9,
-    YellowGreen     = 10,
-    OrangeYellow    = 11,
-    Blue            = 12,
-    Green           = 13,
-    Red             = 14,
-    Yellow          = 15,
-    Magenta         = 16,
-    Cyan            = 17,
-    White           = 18,
-    Neutral_8       = 19,
-    Neutral_6_5     = 20,
-    Neutral_5       = 21,
-    Neutral_3_5     = 22,
-    Black           = 23
-};
-
-const char* GMBColorNames[24] {
-    "DarkSkin",
-    "LightSkin",
-    "BlueSky",
-    "Foliage",
-    "BlueFlower",
-    "BluishGreen",
-    "Orange",
-    "PurplishBlue",
-    "ModerateRed",
-    "Purple",
-    "YellowGreen",
-    "OrangeYellow",
-    "Blue",
-    "Green",
-    "Red",
-    "Yellow",
-    "Magenta",
-    "Cyan",
-    "White",
-    "Neutral_8",
-    "Neutral_6_5",
-    "Neutral_5",
-    "Neutral_3_5",
-    "Black"
-};
-
-struct PatchStats {
-    std::array<float, 3> mean;
-    std::array<float, 3> variance;
-};
-
-float square(float x) {
-    return x * x;
-}
-
-// Collect mean and variance of ColorChecker patches
-void colorCheckerStats(gls::image<gls::rgba_pixel_float>* image, const gls::rectangle& gmb_position, std::array<PatchStats, 24>* stats) {
-    std::cout << "rectangle: " << gmb_position.x << ", " << gmb_position.y << ", " << gmb_position.width << ", " << gmb_position.height << std::endl;
-
-    int patch_width = gmb_position.width / 6;
-    int patch_height = gmb_position.height / 4;
-
-    int patchIdx = 0;
-    for (int row = 0; row < 4; row++) {
-        for (int col = 0; col < 6; col++, patchIdx++) {
-            gls::rectangle patch = {
-                gmb_position.x + col * patch_width + (int) (0.2 * patch_width),
-                gmb_position.y + row * patch_height + (int) (0.2 * patch_height),
-                (int) (0.6 * patch_width),
-                (int) (0.6 * patch_height) };
-
-            int patchSamples = patch.width * patch.height;
-
-            float avgY = 0;
-            float avgCb = 0;
-            float avgCr = 0;
-
-            for (int y = 0; y < patch.height; y++) {
-                for (int x = 0; x < patch.width; x++) {
-                    const auto& p = (*image)[patch.y + y][patch.x + x];
-                    avgY += p[0];
-                    avgCr += p[1];
-                    avgCb += p[2];
-                }
-            }
-
-            avgY /= patchSamples;
-            avgCb /= patchSamples;
-            avgCr /= patchSamples;
-
-            float varY = 0;
-            float varCb = 0;
-            float varCr = 0;
-
-            for (int y = 0; y < patch.height; y++) {
-                for (int x = 0; x < patch.width; x++) {
-                    const auto& p = (*image)[patch.y + y][patch.x + x];
-                    varY += square(p[0] - avgY);
-                    varCr += square(p[1] - avgCb);
-                    varCb += square(p[2] - avgCr);
-
-                    (*image)[patch.y + y][patch.x + x] = {0, 0, 0, 0};
-                }
-            }
-
-            varY /= patchSamples;
-            varCb /= patchSamples;
-            varCr /= patchSamples;
-
-//            std::cout << std::setw(12) << std::setfill(' ') << GMBColorNames[patchIdx] << " - avg(" << patchSamples << "): {"
-//                      << std::setprecision(2) << avgY << ", " << avgCb << ", " << avgCr << "}, var: {" << varY << ", " << varCb << ", " << varCr << "}" << std::endl;
-
-            (*stats)[patchIdx] = {{avgY, avgCb, avgCr}, {varY, varCb, varCr}};
-        }
-    }
-}
-
-// Slope Regression of a set of points
-template <size_t N>
-float slope_regression(const std::array<float, N>& x, const std::array<float, N>& y) {
-    const auto s_x  = std::accumulate(x.begin(), x.end(), 0.0);
-    const auto s_y  = std::accumulate(y.begin(), y.end(), 0.0);
-    const auto s_xx = std::inner_product(x.begin(), x.end(), x.begin(), 0.0);
-    const auto s_xy = std::inner_product(x.begin(), x.end(), y.begin(), 0.0);
-    const auto a    = (N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x);
-    return a;
-}
-
-// Estimate the Sensor's Noise Level Function (NLF: variance vs intensity), which is linear going through zero
-std::array<float, 3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* image, const gls::rectangle& gmb_position) {
-    std::array<PatchStats, 24> stats;
-    colorCheckerStats(image, gmb_position, &stats);
-
-    std::array<float, 6> y_intensity = {
-        stats[Black].mean[0],
-        stats[Neutral_3_5].mean[0],
-        stats[Neutral_5].mean[0],
-        stats[Neutral_6_5].mean[0],
-        stats[Neutral_8].mean[0],
-        stats[White].mean[0]
-    };
-
-    std::array<float, 6> y_variance = {
-        stats[Black].variance[0],
-        stats[Neutral_3_5].variance[0],
-        stats[Neutral_5].variance[0],
-        stats[Neutral_6_5].variance[0],
-        stats[Neutral_8].variance[0],
-        stats[White].variance[0]
-    };
-
-    std::array<float, 6> cb_variance = {
-        stats[Black].variance[1],
-        stats[Neutral_3_5].variance[1],
-        stats[Neutral_5].variance[1],
-        stats[Neutral_6_5].variance[1],
-        stats[Neutral_8].variance[1],
-        stats[White].variance[1]
-    };
-
-    std::array<float, 6> cr_variance = {
-        stats[Black].variance[2],
-        stats[Neutral_3_5].variance[2],
-        stats[Neutral_5].variance[2],
-        stats[Neutral_6_5].variance[2],
-        stats[Neutral_8].variance[2],
-        stats[White].variance[2]
-    };
-
-    float nlf_y = slope_regression(y_intensity, y_variance);
-    float nlf_cb = slope_regression(y_intensity, cb_variance);
-    float nlf_cr = slope_regression(y_intensity, cr_variance);
-
-    return {nlf_y, nlf_cb, nlf_cr};
-}
-
-std::array<float, 3> extractNFLFromColoRchecher(const gls::cl_image_2d<gls::rgba_pixel_float>& image, const gls::rectangle gmb_position, int scale) {
-    auto yCbCrImage = image.toImage();
-    const gls::rectangle position = {gmb_position.x / scale, gmb_position.y / scale, gmb_position.width / scale, gmb_position.height / scale};
-    std::array<float, 3> nlf_parameters = estimateNlfParameters(yCbCrImage.get(), position);
-    std::cout << "Scale " << scale << " nlf_y: " << nlf_parameters[0] << ", nlf_cb: " << nlf_parameters[1] << ", nlf_cr: " << nlf_parameters[2] << std::endl;
-
-//    gls::image<gls::rgb_pixel> output(yCbCrImage->width, yCbCrImage->height);
-//    for (int y = 0; y < output.height; y++) {
-//        for (int x = 0; x < output.width; x++) {
-//            const auto& p = (*yCbCrImage)[y][x];
-//            output[y][x] = {(uint8_t) (255 * p[0]), (uint8_t) (128 * p[1] + 128), (uint8_t) (128 * p[2] + 128)};
-//        }
-//    }
-//    output.write_png_file("/Users/fabio/ColorChecker" + std::to_string(scale) + ".png");
-
-    return nlf_parameters;
-}
 
 template <size_t levels = 4>
 struct PyramidalDenoise {
@@ -1033,32 +26,48 @@ struct PyramidalDenoise {
     std::array<imageType::unique_ptr, levels-1> imagePyramid;
     std::array<imageType::unique_ptr, levels> denoisedImagePyramid;
 
-    PyramidalDenoise(const cl::Context clContext, const imageType& image) {
+    PyramidalDenoise(gls::OpenCLContext* glsContext, const imageType& image) {
         for (int i = 0, scale = 2; i < levels-1; i++, scale *= 2) {
-            imagePyramid[i] = std::make_unique<imageType>(clContext, image.width/scale, image.height/scale);
+            imagePyramid[i] = std::make_unique<imageType>(glsContext->clContext(), image.width/scale, image.height/scale);
         }
         for (int i = 0, scale = 1; i < levels; i++, scale *= 2) {
-            denoisedImagePyramid[i] = std::make_unique<imageType>(clContext, image.width/scale, image.height/scale);
+            denoisedImagePyramid[i] = std::make_unique<imageType>(glsContext->clContext(), image.width/scale, image.height/scale);
         }
     }
 
     imageType* denoise(gls::OpenCLContext* glsContext, std::array<DenoiseParameters, levels>* denoiseParameters,
-                       imageType* image) {
-        // Convert image to YCbCr for Luma/Chroma Denoising
-        applyKernel(glsContext, "rgbToYCbCrImage", *image, image);
+                       imageType* image, const gls::Matrix<3, 3>& rgb_cam) {
 
-        const gls::rectangle gmb_position = {3441, 773, 1531, 991};
-        const auto nflParameters = extractNFLFromColoRchecher(*image, gmb_position, 1);
-        (*denoiseParameters)[0].lumaVariance = nflParameters[0];
-        (*denoiseParameters)[0].chromaVariance = (nflParameters[1] + nflParameters[2]) / 2;
+        gls::Matrix<4, 3> NFL({
+            { 0.00243607,   0.00102689,     0.000649588 },
+            { 0.00057763,   0.000519531,    0.000315311 },
+            { 0.000153949,  0.00017422,     0.000109057 },
+            { 0.00122609,   5.68481e-05,    3.30204e-05 }
+        });
+
+        // const gls::rectangle gmb_position = {3441, 773, 1531, 991};
+        const gls::rectangle gmb_position = {4537, 2351, 1652, 1068};
+        auto cpuImage = image->toImage();
+        const auto nflParameters = extractNFLFromColoRchecher(cpuImage.get(), gmb_position, 1);
+        (*denoiseParameters)[0].lumaVariance *= nflParameters[0];
+        (*denoiseParameters)[0].cbVariance *= nflParameters[1];
+        (*denoiseParameters)[0].crVariance *= nflParameters[2];
 
         for (int i = 0, scale = 2; i < levels-1; i++, scale *= 2) {
             resampleImage(glsContext, "downsampleImage", i == 0 ? *image : *imagePyramid[i - 1], imagePyramid[i].get());
 
-            const auto nflParameters = extractNFLFromColoRchecher(*imagePyramid[i], gmb_position, scale);
-            (*denoiseParameters)[i+1].lumaVariance = nflParameters[0];
-            (*denoiseParameters)[i+1].chromaVariance = (nflParameters[1] + nflParameters[2]) / 2;
+            auto cpuLayer = imagePyramid[i]->toImage();
+            const auto nflParameters = extractNFLFromColoRchecher(cpuLayer.get(), gmb_position, scale);
+            (*denoiseParameters)[i+1].lumaVariance *= nflParameters[0];
+            (*denoiseParameters)[i+1].cbVariance *= nflParameters[1];
+            (*denoiseParameters)[i+1].crVariance *= nflParameters[2];
         }
+
+//        for (int i = 0; i < 4; i++) {
+//            (*denoiseParameters)[i].lumaVariance *= NFL[i][0];
+//            (*denoiseParameters)[i].cbVariance *= NFL[i][1];
+//            (*denoiseParameters)[i].crVariance *= NFL[i][2];
+//        }
 
         // Denoise the bottom of the image pyramid
         denoiseImage(glsContext, *(imagePyramid[levels-2]),
@@ -1075,9 +84,6 @@ struct PyramidalDenoise {
             reassembleImage(glsContext, *(denoisedImagePyramid[i]), *(imagePyramid[i]),
                             *(denoisedImagePyramid[i+1]), (*denoiseParameters)[i].sharpening, denoisedImagePyramid[i].get());
         }
-
-        // Convert result to RGB
-        applyKernel(glsContext, "yCbCrtoRGBImage", *(denoisedImagePyramid[0]), denoisedImagePyramid[0].get());
 
         return denoisedImagePyramid[0].get();
     }
@@ -1106,42 +112,54 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
     scaleRawData(&glsContext, clRawImage, &clScaledRawImage, bayerPattern, scale_mul, black_level / 0xffff);
 
     gls::cl_image_2d<gls::luma_pixel_float> clGreenImage(clContext, rawImage.width, rawImage.height);
-    interpolateGreen(&glsContext, clScaledRawImage, &clGreenImage, bayerPattern);
+    interpolateGreen(&glsContext, clScaledRawImage, &clGreenImage, bayerPattern, 0.003);
 
     gls::cl_image_2d<gls::rgba_pixel_float> clLinearRGBImage(clContext, rawImage.width, rawImage.height);
-    interpolateRedBlue(&glsContext, clScaledRawImage, clGreenImage, &clLinearRGBImage, bayerPattern);
+    interpolateRedBlue(&glsContext, clScaledRawImage, clGreenImage, &clLinearRGBImage, bayerPattern, 0.001, true);
 
     // --- Image Denoising ---
 
     std::array<DenoiseParameters, 4> denoiseParameters = {{
         {
-            .chromaVariance = 0.01,
-            .lumaVariance = 0.0005,
-            .radius = 5,
-            .sharpening = 1.1
-        },
-        {
-            .chromaVariance = 0.01,
-            .lumaVariance = 0.001,
-            .radius = 5,
-            .sharpening = 1.3
-        },
-        {
-            .chromaVariance = 0.005,
-            .lumaVariance = 0.0005,
-            .radius = 5,
+            .lumaVariance = 1.0,
+            .cbVariance = 1.0,
+            .crVariance = 1.0,
             .sharpening = 1.0
         },
         {
-            .chromaVariance = 0.001,
-            .lumaVariance = 0.0005,
-            .radius = 5,
+            .lumaVariance = 1.0,
+            .cbVariance = 1.0,
+            .crVariance = 1.0,
+            .sharpening = 1.0
+        },
+        {
+            .lumaVariance = 1.0,
+            .cbVariance = 1.0,
+            .crVariance = 1.0,
+            .sharpening = 1.0
+        },
+        {
+            .lumaVariance = 1.0,
+            .cbVariance = 1.0,
+            .crVariance = 1.0,
             .sharpening = 1.0
         }
     }};
 
-    PyramidalDenoise pyramidalDenoise(glsContext.clContext(), clLinearRGBImage);
-    auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, &denoiseParameters, &clLinearRGBImage);
+    // Convert linear image to YCbCr
+    const auto cam_to_ycbcr = cam_ycbcr(rgb_cam);
+    transformImage(&glsContext, clLinearRGBImage, &clLinearRGBImage, cam_to_ycbcr);
+
+//    gls::cl_image_2d<gls::rgba_pixel_float> despeckledImage(glsContext.clContext(), clLinearRGBImage.width, clLinearRGBImage.height);
+//    applyKernel(&glsContext, "despeckleImage", clLinearRGBImage, &despeckledImage);
+
+    auto& despeckledImage = clLinearRGBImage;
+
+    PyramidalDenoise pyramidalDenoise(&glsContext, despeckledImage);
+    auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, &denoiseParameters, &despeckledImage, rgb_cam);
+
+    // Convert result back to camera RGB
+    transformImage(&glsContext, *clDenoisedImage, clDenoisedImage, inverse(cam_to_ycbcr));
 
     // --- Image Post Processing ---
 

@@ -119,6 +119,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::
     gls::tiff_metadata my_exif_metadata;
     copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FNUMBER);
     copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREPROGRAM);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSURETIME);
     copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
     copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEORIGINAL);
     copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEDIGITIZED);
@@ -145,7 +146,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::
 
     // Write out a stripped DNG files with minimal metadata
     auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
-    inputImage->write_dng_file(output_file, /*compression=*/ gls::JPEG, &dng_metadata, &my_exif_metadata);
+    inputImage->write_dng_file(output_file, /*compression=*/ gls::NONE, &dng_metadata, &my_exif_metadata);
 
     return rgb_image;
 }
