@@ -36,9 +36,9 @@ typedef struct DemosaicParameters {
 } DemosaicParameters;
 
 typedef struct DenoiseParameters {
-    float lumaVariance;
-    float cbVariance;
-    float crVariance;
+    float lumaSigma;
+    float cbSigma;
+    float crSigma;
     float sharpening;
 } DenoiseParameters;
 
@@ -64,6 +64,7 @@ const gls::Matrix<3, 3> rgb_xyz = {
 };
 
 inline uint16_t clamp_uint16(int x) { return x < 0 ? 0 : x > 0xffff ? 0xffff : x; }
+inline uint8_t clamp_uint8(int x) { return x < 0 ? 0 : x > 0xff ? 0xff : x; }
 
 void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);
 
@@ -77,7 +78,7 @@ gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls:
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage,
                                                       gls::tiff_metadata* metadata, const DemosaicParameters& parameters,
-                                                      bool auto_white_balance);
+                                                      int iso, bool auto_white_balance);
 
 gls::image<gls::rgba_pixel>::unique_ptr fastDemosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
                                                           const DemosaicParameters& demosaicParameters, bool auto_white_balance);
@@ -98,6 +99,6 @@ void unpackRawMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
 
 gls::Matrix<3, 3> cam_ycbcr(const gls::Matrix<3, 3>& rgb_cam);
 
-std::array<float, 3> extractNFLFromColoRchecher(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, int scale);
+std::array<float, 3> extractNlfFromColorChecker(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, int scale);
 
 #endif /* demosaic_hpp */

@@ -16,6 +16,7 @@
 #include "demosaic.hpp"
 
 #include <numeric>
+#include <iomanip>
 
 #include "gls_color_science.hpp"
 #include "gls_image.hpp"
@@ -401,7 +402,7 @@ float square(float x) {
 
 // Collect mean and variance of ColorChecker patches
 void colorCheckerStats(gls::image<gls::rgba_pixel_float>* image, const gls::rectangle& gmb_position, std::array<PatchStats, 24>* stats) {
-    std::cout << "rectangle: " << gmb_position.x << ", " << gmb_position.y << ", " << gmb_position.width << ", " << gmb_position.height << std::endl;
+    // std::cout << "rectangle: " << gmb_position.x << ", " << gmb_position.y << ", " << gmb_position.width << ", " << gmb_position.height << std::endl;
 
     int patch_width = gmb_position.width / 6;
     int patch_height = gmb_position.height / 4;
@@ -469,7 +470,7 @@ std::pair<float, float> linear_regression(const std::array<float, N>& x, const s
     const auto s_xx = std::inner_product(x.begin(), x.end(), x.begin(), 0.0);
     const auto s_xy = std::inner_product(x.begin(), x.end(), y.begin(), 0.0);
     const auto b    = (N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x);
-    const auto a    = s_x / N - b * s_x / N;
+    const auto a    = (s_y - b * s_x) / N;
     return { a, b };
 }
 
@@ -514,20 +515,26 @@ std::array<float, 3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* im
         stats[White].variance[2]
     };
 
-    for (int patch = Black; patch >= White; patch--) {
-        std::cout << stats[patch].mean[0] << "\t" << stats[patch].variance[0] << "\t" << stats[patch].variance[1] << "\t" << stats[patch].variance[2] << std::endl;
-    }
+//    std::cout << "NLF Stats:" << std::endl;
+//    for (int patch = Black; patch >= White; patch--) {
+//        std::cout << std::setprecision(4) << std::setw(4) << stats[patch].mean[0] << "\t"
+//                  << stats[patch].variance[0] << "\t" << stats[patch].variance[1] << "\t" << stats[patch].variance[2] << std::endl;
+//    }
 
     auto nlf_y = linear_regression(y_intensity, y_variance);
     auto nlf_cb = linear_regression(y_intensity, cb_variance);
     auto nlf_cr = linear_regression(y_intensity, cr_variance);
 
-    std::cout << "nlf_y: " << nlf_y.first << ":" << nlf_y.second << ", nlf_cb: " << nlf_cb.first << ":" << nlf_cb.second << ", nlf_cr: " << nlf_cr.first << ":" << nlf_cr.second << std::endl;
+//    std::cout << std::setprecision(4) << std::setw(4)
+//              << "nlf_y: " << nlf_y.first << ":" << nlf_y.second
+//              << ", nlf_cb: " << nlf_cb.first << ":" << nlf_cb.second
+//              << ", nlf_cr: " << nlf_cr.first << ":" << nlf_cr.second << std::endl;
 
-    return {nlf_y.second, nlf_cb.second, nlf_cr.second};
+    // NFL for Y passes by 0, just use the slope, NFL for Cb and and Cr is mostly flat, just return the average
+    return {nlf_y.second, nlf_cb.first + 0.5f * nlf_cb.first, nlf_cr.first + 0.5f * nlf_cr.second};
 }
 
-std::array<float, 3> extractNFLFromColoRchecher(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, int scale) {
+std::array<float, 3> extractNlfFromColorChecker(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, int scale) {
     const gls::rectangle position = {
         (int) round(gmb_position.x / (float) scale),
         (int) round(gmb_position.y / (float) scale),
@@ -535,13 +542,13 @@ std::array<float, 3> extractNFLFromColoRchecher(gls::image<gls::rgba_pixel_float
         (int) round(gmb_position.height / (float) scale)
     };
     std::array<float, 3> nlf_parameters = estimateNlfParameters(yCbCrImage, position);
-    // std::cout << "Scale " << scale << " nlf_y: " << nlf_parameters[0] << ", nlf_cb: " << nlf_parameters[1] << ", nlf_cr: " << nlf_parameters[2] << std::endl;
+    std::cout << "Scale " << scale << " nlf parameters: " << nlf_parameters[0] << ", " << nlf_parameters[1] << ", " << nlf_parameters[2] << std::endl;
 
     gls::image<gls::rgb_pixel> output(yCbCrImage->width, yCbCrImage->height);
     for (int y = 0; y < output.height; y++) {
         for (int x = 0; x < output.width; x++) {
             const auto& p = (*yCbCrImage)[y][x];
-            output[y][x] = {(uint8_t) (255 * p[0]), (uint8_t) (128 * p[1] + 128), (uint8_t) (128 * p[2] + 128)};
+            output[y][x] = {clamp_uint8(255 * p[0]), clamp_uint8(128 * p[1] + 127), clamp_uint8(128 * p[2] + 127)};
         }
     }
     output.write_png_file("/Users/fabio/ColorChecker" + std::to_string(scale) + ".png");

@@ -91,7 +91,7 @@ kernel void scaleRawData(read_only image2d_t rawImage, write_only image2d_t scal
     }
 }
 
-kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t greenImage, int bayerPattern, float lumaVariance) {
+kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t greenImage, int bayerPattern, float lumaSigma) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
     const int x = imageCoordinates.x;
@@ -153,7 +153,7 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
         float sample_flat = g_ave + whiteness * (c_xy - (c_left + c_right + c_up + c_down) / 4) / 4;
 
         // TODO: replace eps with some multiple of sigma from the noise model
-        float eps = 4 * sqrt(g_ave * lumaVariance);
+        float eps = 4 * lumaSigma * sqrt(g_ave);
         float flatness = 1 - smoothstep(eps / 2.0, eps, fabs(dv.x - dv.y));
         float sample = mix(dv.x > dv.y ? sample_v : sample_h, sample_flat, flatness);
 
@@ -164,7 +164,7 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
 }
 
 kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t greenImage,
-                               write_only image2d_t rgbImage, int bayerPattern, float chromaVariance,
+                               write_only image2d_t rgbImage, int bayerPattern, float chromaSigma,
                                int rotate_180) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
@@ -199,7 +199,7 @@ kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t
             float c2_bottom_right = g_bottom_right - read_imagef(rawImage, (int2)(x + 1, y + 1)).x;
 
             // TODO: replace eps with some multiple of sigma from the noise model
-            float eps = 4 * sqrt(green * chromaVariance);
+            float eps = 4 * chromaSigma;
             float2 dc = (float2) (fabs(c2_top_left - c2_bottom_right), fabs(c2_top_right - c2_bottom_left));
             float alpha = length(dc) > eps ? atan2(dc.y, dc.x) / M_PI_2_F : 0.5;
             float c2 = green - mix((c2_top_right + c2_bottom_left) / 2,
@@ -361,17 +361,16 @@ kernel void transformImage(read_only image2d_t inputImage, write_only image2d_t 
 }
 
 typedef struct DenoiseParameters {
-    const float lumaVariance;
-    const float cbVariance;
-    const float crVariance;
+    const float lumaSigma;
+    const float cbSigma;
+    const float crSigma;
     const float sharpening;
 } DenoiseParameters;
 
 float3 denoiseLumaChroma(constant DenoiseParameters* parameters, image2d_t inputImage, int2 imageCoordinates) {
     const float3 inputYCC = read_imagef(inputImage, imageCoordinates).xyz;
 
-    float3 variance = (float3) (parameters->lumaVariance, parameters->crVariance, parameters->cbVariance);
-    float3 sigma = (float3) (0.25, 2, 2) * sqrt(variance * inputYCC.x);
+    float3 sigma = (float3) (parameters->lumaSigma * sqrt(inputYCC.x), parameters->cbSigma, parameters->crSigma);
 
     float3 filtered_pixel = 0;
     float3 kernel_norm = 0;

@@ -46,7 +46,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesyste
     metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
 
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &metadata);
-    return demosaicImage(*inputImage, &metadata, demosaicParameters, /*auto_white_balance=*/ false);
+    return demosaicImage(*inputImage, &metadata, demosaicParameters, /*iso=*/ 100, /*auto_white_balance=*/ false);
 }
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::path& input_path) {
@@ -69,7 +69,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem:
     metadata.insert({ TIFFTAG_UNIQUECAMERAMODEL, "Glass 1" });
 
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &metadata);
-    return demosaicImage(*inputImage, &metadata, demosaicParameters, /*auto_white_balance=*/ true);
+    return demosaicImage(*inputImage, &metadata, demosaicParameters, /*iso=*/ 100, /*auto_white_balance=*/ true);
 }
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492PNG(const std::filesystem::path& input_path) {
@@ -92,7 +92,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492PNG(const std::filesystem:
     metadata.insert({ TIFFTAG_UNIQUECAMERAMODEL, "Glass 1" });
 
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_png_file(input_path.string());
-    return demosaicImage(*inputImage, &metadata, demosaicParameters, /*auto_white_balance=*/ false);
+    return demosaicImage(*inputImage, &metadata, demosaicParameters, /*iso=*/ 100, /*auto_white_balance=*/ false);
 }
 
 void copyMetadata(const gls::tiff_metadata& source, gls::tiff_metadata* destination, ttag_t tag) {
@@ -114,7 +114,9 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::
     gls::tiff_metadata dng_metadata, exif_metadata;
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
 
-    auto rgb_image = demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false);
+    const auto iso = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS)[0];
+
+    auto rgb_image = demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false);
 
     gls::tiff_metadata my_exif_metadata;
     copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FNUMBER);

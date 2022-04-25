@@ -20,6 +20,83 @@
 
 static const char* TAG = "CLImage Pipeline";
 
+static const float IMX492NFL[6][4][3] = {
+    // ISO 100
+    {
+        { 4.38275e-05, 5.31895e-06, 2.57406e-05 },
+        { 1.61605e-05, 5.20781e-06, 2.30347e-05 },
+        { 7.54757e-06, 5.11204e-06, 2.02702e-05 },
+        { 4.60632e-06, 5.04738e-06, 1.91247e-05 }
+    },
+    // ISO 200
+    {
+        { 8.22319e-05, 1.17027e-05, 4.51354e-05 },
+        { 2.93849e-05, 1.16521e-05, 3.96089e-05 },
+        { 1.34504e-05, 1.14135e-05, 3.48181e-05 },
+        { 7.84091e-06, 1.12731e-05, 3.21395e-05 }
+    },
+    // ISO 400
+    {
+        { 0.000157257, 7.88058e-06, 4.74268e-05 },
+        { 5.33433e-05, 7.64073e-06, 3.63058e-05 },
+        { 2.01735e-05, 7.28965e-06, 2.59128e-05 },
+        { 9.03684e-06, 7.11232e-06, 2.07884e-05 }
+    },
+    // ISO 800
+    {
+        { 0.000298601, 7.07557e-06, 5.32054e-05 },
+        { 9.16717e-05, 6.38477e-06, 3.14448e-05 },
+        { 2.9975e-05,  5.62945e-06, 1.21154e-05 },
+        { 9.22798e-06, 5.40723e-06, 2.80249e-06 }
+    },
+    // ISO 1600
+    {
+        { 0.000638579, 1.94856e-05, 0.000115001 },
+        { 0.000202505, 1.66096e-05, 6.85067e-05 },
+        { 6.08632e-05, 1.47908e-05, 2.62121e-05 },
+        { 1.84483e-05, 1.41926e-05, 6.27596e-06 }
+    },
+    // ISO 32000
+    {
+        { 0.00151377,  1.19521e-05, 0.0003362   },
+        { 0.000480129, 8.78253e-06, 0.000211642 },
+        { 0.000147973, 7.96094e-06, 0.000100203 },
+        { 4.12846e-05, 7.78549e-06, 4.89834e-05 }
+    },
+};
+
+std::array<std::array<float, 3>, 4> lerpNFL(const float NFLData0[4][3], const float NFLData1[4][3], float a) {
+    std::array<std::array<float, 3>, 4> result;
+    for (int j = 0; j < 4; j++) {
+        for (int i = 0; i < 3; i++) {
+            result[j][i] = std::lerp(NFLData0[j][i], NFLData1[j][i], a);
+        }
+    }
+    return result;
+}
+
+std::array<std::array<float, 3>, 4> nfl(const float NFLData[6][4][3], int iso) {
+    if (iso >= 100 && iso < 200) {
+        float a = (iso - 100) / 100;
+        return lerpNFL(NFLData[0], NFLData[1], a);
+    } else if (iso >= 200 && iso < 400) {
+        float a = (iso - 200) / 200;
+        return lerpNFL(NFLData[1], NFLData[2], a);
+    } else if (iso >= 400 && iso < 800) {
+        float a = (iso - 400) / 400;
+        return lerpNFL(NFLData[2], NFLData[3], a);
+    } else if (iso >= 800 && iso < 1600) {
+        float a = (iso - 800) / 800;
+        return lerpNFL(NFLData[3], NFLData[4], a);
+    } else if (iso >= 1600 && iso <= 3200) {
+        float a = (iso - 1600) / 1600;
+        return lerpNFL(NFLData[4], NFLData[5], a);
+    } else {
+        // TODO: Maybe throw an error?
+        return lerpNFL(NFLData[0], NFLData[0], 0);
+    }
+}
+
 template <size_t levels = 4>
 struct PyramidalDenoise {
     typedef gls::cl_image_2d<gls::rgba_pixel_float> imageType;
@@ -36,38 +113,40 @@ struct PyramidalDenoise {
     }
 
     imageType* denoise(gls::OpenCLContext* glsContext, std::array<DenoiseParameters, levels>* denoiseParameters,
-                       imageType* image, const gls::Matrix<3, 3>& rgb_cam) {
-
-        gls::Matrix<4, 3> NFL({
-            { 0.00243607,   0.00102689,     0.000649588 },
-            { 0.00057763,   0.000519531,    0.000315311 },
-            { 0.000153949,  0.00017422,     0.000109057 },
-            { 0.00122609,   5.68481e-05,    3.30204e-05 }
-        });
+                       imageType* image, const gls::Matrix<3, 3>& rgb_cam, int iso) {
+        const bool use_nfl_calibration = true;
 
         // const gls::rectangle gmb_position = {3441, 773, 1531, 991};
-        const gls::rectangle gmb_position = {4537, 2351, 1652, 1068};
-        auto cpuImage = image->toImage();
-        const auto nflParameters = extractNFLFromColoRchecher(cpuImage.get(), gmb_position, 1);
-        (*denoiseParameters)[0].lumaVariance *= nflParameters[0];
-        (*denoiseParameters)[0].cbVariance *= nflParameters[1];
-        (*denoiseParameters)[0].crVariance *= nflParameters[2];
+        const gls::rectangle gmb_position = {4537-60, 2351, 1652, 1068};
+        if (!use_nfl_calibration) {
+            auto cpuImage = image->toImage();
+            const auto nflParameters = extractNlfFromColorChecker(cpuImage.get(), gmb_position, 1);
+            (*denoiseParameters)[0].lumaSigma *= sqrt(nflParameters[0]);
+            (*denoiseParameters)[0].cbSigma *= sqrt(nflParameters[1]);
+            (*denoiseParameters)[0].crSigma *= sqrt(nflParameters[2]);
+        }
 
         for (int i = 0, scale = 2; i < levels-1; i++, scale *= 2) {
             resampleImage(glsContext, "downsampleImage", i == 0 ? *image : *imagePyramid[i - 1], imagePyramid[i].get());
 
-            auto cpuLayer = imagePyramid[i]->toImage();
-            const auto nflParameters = extractNFLFromColoRchecher(cpuLayer.get(), gmb_position, scale);
-            (*denoiseParameters)[i+1].lumaVariance *= nflParameters[0];
-            (*denoiseParameters)[i+1].cbVariance *= nflParameters[1];
-            (*denoiseParameters)[i+1].crVariance *= nflParameters[2];
+            if (!use_nfl_calibration) {
+                auto cpuLayer = imagePyramid[i]->toImage();
+                const auto nflParameters = extractNlfFromColorChecker(cpuLayer.get(), gmb_position, scale);
+                (*denoiseParameters)[i+1].lumaSigma *= sqrt(nflParameters[0]);
+                (*denoiseParameters)[i+1].cbSigma *= sqrt(nflParameters[1]);
+                (*denoiseParameters)[i+1].crSigma *= sqrt(nflParameters[2]);
+            }
         }
 
-//        for (int i = 0; i < 4; i++) {
-//            (*denoiseParameters)[i].lumaVariance *= NFL[i][0];
-//            (*denoiseParameters)[i].cbVariance *= NFL[i][1];
-//            (*denoiseParameters)[i].crVariance *= NFL[i][2];
-//        }
+        if (use_nfl_calibration) {
+            for (int i = 0; i < 4; i++) {
+                // TODO: Further parametrize this
+                auto nfl_params = nfl(IMX492NFL, iso);
+                (*denoiseParameters)[i].lumaSigma *= sqrt(nfl_params[i][0]);
+                (*denoiseParameters)[i].cbSigma *= sqrt(nfl_params[i][1]);
+                (*denoiseParameters)[i].crSigma *= sqrt(nfl_params[i][2]);
+            }
+        }
 
         // Denoise the bottom of the image pyramid
         denoiseImage(glsContext, *(imagePyramid[levels-2]),
@@ -90,7 +169,7 @@ struct PyramidalDenoise {
 };
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
-                                                      const DemosaicParameters& demosaicParameters, bool auto_white_balance) {
+                                                      const DemosaicParameters& demosaicParameters, int iso, bool auto_white_balance) {
     auto t_start = std::chrono::high_resolution_clock::now();
 
     BayerPattern bayerPattern;
@@ -103,7 +182,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
     gls::OpenCLContext glsContext("");
     auto clContext = glsContext.clContext();
 
-    LOG_INFO(TAG) << "Begin demosaicing image (GPU)..." << std::endl;
+    LOG_INFO(TAG) << "Begin demosaicing image (GPU, ISO " << iso << ")..." << std::endl;
 
     // --- Image Demosaicing ---
 
@@ -121,27 +200,27 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
 
     std::array<DenoiseParameters, 4> denoiseParameters = {{
         {
-            .lumaVariance = 1.0,
-            .cbVariance = 1.0,
-            .crVariance = 1.0,
+            .lumaSigma = 0.25,
+            .cbSigma = 2.0,
+            .crSigma = 2.0,
             .sharpening = 1.0
         },
         {
-            .lumaVariance = 1.0,
-            .cbVariance = 1.0,
-            .crVariance = 1.0,
+            .lumaSigma = 0.25,
+            .cbSigma = 2.0,
+            .crSigma = 2.0,
             .sharpening = 1.0
         },
         {
-            .lumaVariance = 1.0,
-            .cbVariance = 1.0,
-            .crVariance = 1.0,
+            .lumaSigma = 0.25,
+            .cbSigma = 2.0,
+            .crSigma = 2.0,
             .sharpening = 1.0
         },
         {
-            .lumaVariance = 1.0,
-            .cbVariance = 1.0,
-            .crVariance = 1.0,
+            .lumaSigma = 0.25,
+            .cbSigma = 2.0,
+            .crSigma = 2.0,
             .sharpening = 1.0
         }
     }};
@@ -156,7 +235,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
     auto& despeckledImage = clLinearRGBImage;
 
     PyramidalDenoise pyramidalDenoise(&glsContext, despeckledImage);
-    auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, &denoiseParameters, &despeckledImage, rgb_cam);
+    auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, &denoiseParameters, &despeckledImage, rgb_cam, iso);
 
     // Convert result back to camera RGB
     transformImage(&glsContext, *clDenoisedImage, clDenoisedImage, inverse(cam_to_ycbcr));

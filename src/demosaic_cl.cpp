@@ -249,6 +249,8 @@ void denoiseImage(gls::OpenCLContext* glsContext,
                                     cl::Image2D   // outputImage
                                     >(program, "denoiseImage");
 
+    std::cout << "denoiseImage with parameters: " << denoiseParameters.lumaSigma << ", " << denoiseParameters.crSigma << ", " << denoiseParameters.cbSigma << std::endl;
+
     cl::Buffer denoiseParametersBuffer(glsContext->clContext(), CL_MEM_USE_HOST_PTR, sizeof(DenoiseParameters), (void *) &denoiseParameters);
 
     // Schedule the kernel on the GPU
