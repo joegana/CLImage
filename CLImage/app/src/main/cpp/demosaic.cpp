@@ -20,7 +20,7 @@
 
 static const char* TAG = "CLImage Pipeline";
 
-static const float IMX492NFL[6][4][3] = {
+static const float IMX492NLF[6][4][3] = {
     // ISO 100
     {
         { 4.38275e-05, 5.31895e-06, 2.57406e-05 },
@@ -65,35 +65,35 @@ static const float IMX492NFL[6][4][3] = {
     },
 };
 
-std::array<std::array<float, 3>, 4> lerpNFL(const float NFLData0[4][3], const float NFLData1[4][3], float a) {
+std::array<std::array<float, 3>, 4> lerpNLF(const float NLFData0[4][3], const float NLFData1[4][3], float a) {
     std::array<std::array<float, 3>, 4> result;
     for (int j = 0; j < 4; j++) {
         for (int i = 0; i < 3; i++) {
-            result[j][i] = std::lerp(NFLData0[j][i], NFLData1[j][i], a);
+            result[j][i] = std::lerp(NLFData0[j][i], NLFData1[j][i], a);
         }
     }
     return result;
 }
 
-std::array<std::array<float, 3>, 4> nfl(const float NFLData[6][4][3], int iso) {
+std::array<std::array<float, 3>, 4> nlf(const float NLFData[6][4][3], int iso) {
     if (iso >= 100 && iso < 200) {
         float a = (iso - 100) / 100;
-        return lerpNFL(NFLData[0], NFLData[1], a);
+        return lerpNLF(NLFData[0], NLFData[1], a);
     } else if (iso >= 200 && iso < 400) {
         float a = (iso - 200) / 200;
-        return lerpNFL(NFLData[1], NFLData[2], a);
+        return lerpNLF(NLFData[1], NLFData[2], a);
     } else if (iso >= 400 && iso < 800) {
         float a = (iso - 400) / 400;
-        return lerpNFL(NFLData[2], NFLData[3], a);
+        return lerpNLF(NLFData[2], NLFData[3], a);
     } else if (iso >= 800 && iso < 1600) {
         float a = (iso - 800) / 800;
-        return lerpNFL(NFLData[3], NFLData[4], a);
+        return lerpNLF(NLFData[3], NLFData[4], a);
     } else if (iso >= 1600 && iso <= 3200) {
         float a = (iso - 1600) / 1600;
-        return lerpNFL(NFLData[4], NFLData[5], a);
+        return lerpNLF(NLFData[4], NLFData[5], a);
     } else {
         // TODO: Maybe throw an error?
-        return lerpNFL(NFLData[0], NFLData[0], 0);
+        return lerpNLF(NLFData[0], NLFData[0], 0);
     }
 }
 
@@ -114,37 +114,37 @@ struct PyramidalDenoise {
 
     imageType* denoise(gls::OpenCLContext* glsContext, std::array<DenoiseParameters, levels>* denoiseParameters,
                        imageType* image, const gls::Matrix<3, 3>& rgb_cam, int iso) {
-        const bool use_nfl_calibration = true;
+        const bool use_nlf_calibration = true;
 
         // const gls::rectangle gmb_position = {3441, 773, 1531, 991};
         const gls::rectangle gmb_position = {4537-60, 2351, 1652, 1068};
-        if (!use_nfl_calibration) {
+        if (!use_nlf_calibration) {
             auto cpuImage = image->toImage();
-            const auto nflParameters = extractNlfFromColorChecker(cpuImage.get(), gmb_position, 1);
-            (*denoiseParameters)[0].lumaSigma *= sqrt(nflParameters[0]);
-            (*denoiseParameters)[0].cbSigma *= sqrt(nflParameters[1]);
-            (*denoiseParameters)[0].crSigma *= sqrt(nflParameters[2]);
+            const auto nlfParameters = extractNlfFromColorChecker(cpuImage.get(), gmb_position, 1);
+            (*denoiseParameters)[0].lumaSigma *= sqrt(nlfParameters[0]);
+            (*denoiseParameters)[0].cbSigma *= sqrt(nlfParameters[1]);
+            (*denoiseParameters)[0].crSigma *= sqrt(nlfParameters[2]);
         }
 
         for (int i = 0, scale = 2; i < levels-1; i++, scale *= 2) {
             resampleImage(glsContext, "downsampleImage", i == 0 ? *image : *imagePyramid[i - 1], imagePyramid[i].get());
 
-            if (!use_nfl_calibration) {
+            if (!use_nlf_calibration) {
                 auto cpuLayer = imagePyramid[i]->toImage();
-                const auto nflParameters = extractNlfFromColorChecker(cpuLayer.get(), gmb_position, scale);
-                (*denoiseParameters)[i+1].lumaSigma *= sqrt(nflParameters[0]);
-                (*denoiseParameters)[i+1].cbSigma *= sqrt(nflParameters[1]);
-                (*denoiseParameters)[i+1].crSigma *= sqrt(nflParameters[2]);
+                const auto nlfParameters = extractNlfFromColorChecker(cpuLayer.get(), gmb_position, scale);
+                (*denoiseParameters)[i+1].lumaSigma *= sqrt(nlfParameters[0]);
+                (*denoiseParameters)[i+1].cbSigma *= sqrt(nlfParameters[1]);
+                (*denoiseParameters)[i+1].crSigma *= sqrt(nlfParameters[2]);
             }
         }
 
-        if (use_nfl_calibration) {
+        if (use_nlf_calibration) {
             for (int i = 0; i < 4; i++) {
                 // TODO: Further parametrize this
-                auto nfl_params = nfl(IMX492NFL, iso);
-                (*denoiseParameters)[i].lumaSigma *= sqrt(nfl_params[i][0]);
-                (*denoiseParameters)[i].cbSigma *= sqrt(nfl_params[i][1]);
-                (*denoiseParameters)[i].crSigma *= sqrt(nfl_params[i][2]);
+                auto nlf_params = nlf(IMX492NLF, iso);
+                (*denoiseParameters)[i].lumaSigma *= sqrt(nlf_params[i][0]);
+                (*denoiseParameters)[i].cbSigma *= sqrt(nlf_params[i][1]);
+                (*denoiseParameters)[i].crSigma *= sqrt(nlf_params[i][2]);
             }
         }
 

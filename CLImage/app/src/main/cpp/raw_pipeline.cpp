@@ -116,39 +116,39 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::
 
     const auto iso = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS)[0];
 
-    auto rgb_image = demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false);
+    auto rgb_image = demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ true);
 
-    gls::tiff_metadata my_exif_metadata;
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FNUMBER);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREPROGRAM);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSURETIME);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEORIGINAL);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEDIGITIZED);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIME);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIMEORIGINAL);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIMEDIGITIZED);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_COMPONENTSCONFIGURATION);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_SHUTTERSPEEDVALUE);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_APERTUREVALUE);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREBIASVALUE);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_MAXAPERTUREVALUE);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_METERINGMODE);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LIGHTSOURCE);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FLASH);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FOCALLENGTH);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_COLORSPACE);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_SENSINGMETHOD);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_WHITEBALANCE);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_BODYSERIALNUMBER);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSSPECIFICATION);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSMAKE);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSMODEL);
-    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSSERIALNUMBER);
-
-    // Write out a stripped DNG files with minimal metadata
-    auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
-    inputImage->write_dng_file(output_file, /*compression=*/ gls::NONE, &dng_metadata, &my_exif_metadata);
+//    gls::tiff_metadata my_exif_metadata;
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FNUMBER);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREPROGRAM);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSURETIME);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEORIGINAL);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEDIGITIZED);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIME);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIMEORIGINAL);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIMEDIGITIZED);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_COMPONENTSCONFIGURATION);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_SHUTTERSPEEDVALUE);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_APERTUREVALUE);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREBIASVALUE);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_MAXAPERTUREVALUE);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_METERINGMODE);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LIGHTSOURCE);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FLASH);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FOCALLENGTH);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_COLORSPACE);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_SENSINGMETHOD);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_WHITEBALANCE);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_BODYSERIALNUMBER);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSSPECIFICATION);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSMAKE);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSMODEL);
+//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSSERIALNUMBER);
+//
+//    // Write out a stripped DNG files with minimal metadata
+//    auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
+//    inputImage->write_dng_file(output_file, /*compression=*/ gls::NONE, &dng_metadata, &my_exif_metadata);
 
     return rgb_image;
 }
@@ -157,11 +157,29 @@ int main(int argc, const char* argv[]) {
     printf("RawPipeline Test!\n");
 
     if (argc > 1) {
-        auto input_path = std::filesystem::path(argv[1]);
+        auto input_dir = std::filesystem::path(argv[1]);
 
-        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+        std::vector<std::filesystem::path> directory_listing;
+        std::copy(std::filesystem::directory_iterator(input_dir), std::filesystem::directory_iterator(),
+                  std::back_inserter(directory_listing));
+        std::sort(directory_listing.begin(), directory_listing.end());
 
-        const auto rgb_image = demosaicAdobeDNG(input_path);
-        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
+        for (const auto& input_path : directory_listing) {
+            if (input_path.extension() != ".dng" || input_path.filename().string().starts_with(".")) {
+                continue;
+            }
+
+            LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+
+            const auto rgb_image = demosaicAdobeDNG(input_path);
+            rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
+        }
+
+//        auto input_path = std::filesystem::path(argv[1]);
+//
+//        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+//
+//        const auto rgb_image = demosaicAdobeDNG(input_path);
+//        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
     }
 }
