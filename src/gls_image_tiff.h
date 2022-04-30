@@ -48,7 +48,7 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
                                       uint8_t *tiff_buffer)> process_tiff_strip);
 
 void write_dng_file(const std::string& filename, int width, int height, int pixel_channels, int pixel_bit_depth,
-                    tiff_compression compression, tiff_metadata* dng_metadata, tiff_metadata* exif_metadata,
+                    tiff_compression compression, const tiff_metadata* dng_metadata, const tiff_metadata* exif_metadata,
                     std::function<uint16_t*(int row)> row_pointer);
 
 }  // namespace gls

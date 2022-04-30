@@ -204,10 +204,11 @@ gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls:
                                                            gls::tiff_metadata* metadata, bool auto_white_balance) {
     BayerPattern bayerPattern;
     float black_level;
+    float white_level;
     gls::Vector<4> scale_mul;
     gls::Matrix<3, 3> rgb_cam;
 
-    unpackRawMetadata(rawImage, metadata, &bayerPattern, &black_level, &scale_mul, &rgb_cam, auto_white_balance);
+    unpackRawMetadata(rawImage, metadata, &bayerPattern, &black_level, &white_level, &scale_mul, &rgb_cam, auto_white_balance);
 
     printf("Begin demosaicing image (CPU)...\n");
 

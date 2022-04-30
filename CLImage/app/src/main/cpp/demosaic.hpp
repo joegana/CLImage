@@ -83,7 +83,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
 gls::image<gls::rgba_pixel>::unique_ptr fastDemosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
                                                           const DemosaicParameters& demosaicParameters, bool auto_white_balance);
 
-gls::Matrix<3, 3> cam_xyz_coeff(gls::Vector<3>& pre_mul, const gls::Matrix<3, 3>& cam_xyz);
+gls::Matrix<3, 3> cam_xyz_coeff(gls::Vector<3>* pre_mul, const gls::Matrix<3, 3>& cam_xyz);
 
 void colorcheck(const gls::image<gls::luma_pixel_16>& rawImage, BayerPattern bayerPattern, uint32_t black, std::array<gls::rectangle, 24> gmb_samples);
 
@@ -93,12 +93,59 @@ void unpackRawMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
                        gls::tiff_metadata* metadata,
                        BayerPattern *bayerPattern,
                        float *black_level,
+                       float *white_level,
                        gls::Vector<4> *scale_mul,
                        gls::Matrix<3, 3> *rgb_cam,
                        bool auto_white_balance);
 
 gls::Matrix<3, 3> cam_ycbcr(const gls::Matrix<3, 3>& rgb_cam);
 
-std::array<float, 3> extractNlfFromColorChecker(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, int scale);
+std::array<float, 3> extractNlfFromColorChecker(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, bool rotate_180, int scale);
+
+enum GMBColors {
+    DarkSkin        = 0,
+    LightSkin       = 1,
+    BlueSky         = 2,
+    Foliage         = 3,
+    BlueFlower      = 4,
+    BluishGreen     = 5,
+    Orange          = 6,
+    PurplishBlue    = 7,
+    ModerateRed     = 8,
+    Purple          = 9,
+    YellowGreen     = 10,
+    OrangeYellow    = 11,
+    Blue            = 12,
+    Green           = 13,
+    Red             = 14,
+    Yellow          = 15,
+    Magenta         = 16,
+    Cyan            = 17,
+    White           = 18,
+    Neutral_8       = 19,
+    Neutral_6_5     = 20,
+    Neutral_5       = 21,
+    Neutral_3_5     = 22,
+    Black           = 23
+};
+
+extern const char* GMBColorNames[24];
+
+struct PatchStats {
+    std::array<float, 3> mean;
+    std::array<float, 3> variance;
+};
+
+struct RawPatchStats {
+    std::array<float, 4> mean;
+    std::array<float, 4> variance;
+};
+
+void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float black_level, float white_level, BayerPattern bayerPattern, const gls::rectangle& gmb_position, bool rotate_180, std::array<RawPatchStats, 24>* stats);
+
+std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>& rawImage, gls::Matrix<3, 3>* cam_xyz, gls::Vector<3>* pre_mul,
+                                           float black_level, float white_level, BayerPattern bayerPattern, const gls::rectangle& gmb_position, bool rotate_180);
+
+void colorcheck(const std::array<RawPatchStats, 24>& rawStats);
 
 #endif /* demosaic_hpp */

@@ -28,27 +28,6 @@
 
 static const char* TAG = "RawPipeline Test";
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesystem::path& input_path) {
-    const DemosaicParameters demosaicParameters = {
-        .contrast = 1.05,
-        .saturation = 1.0,
-        .toneCurveSlope = 3.5,
-        .sharpening = 1.25,
-        .sharpeningRadius = 7,
-    };
-
-    gls::tiff_metadata metadata;
-    metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.0781, -0.4173, -0.0976, -0.0633, 0.9661, 0.0972, 0.0073, 0.1349, 0.3481 } });
-    // metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.001460, 1, 1 / 1.864002 } });
-    metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
-    metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 2, 1, 1, 0 } });
-    metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
-    metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
-
-    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &metadata);
-    return demosaicImage(*inputImage, &metadata, demosaicParameters, /*iso=*/ 100, /*auto_white_balance=*/ false);
-}
-
 gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::path& input_path) {
     const DemosaicParameters demosaicParameters = {
         .contrast = 1.2,
@@ -82,7 +61,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492PNG(const std::filesystem:
     };
 
     gls::tiff_metadata metadata;
-    metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.0781, -0.4173, -0.0976, -0.0633, 0.9661, 0.0972, 0.0073, 0.1349, 0.3481 } });
+    metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 2.1398, -0.8140, -0.2020, -0.0906, 0.9968, 0.0938, -0.0131, 0.2584, 0.6197 } });
     metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.001460, 1, 1 / 1.864002 } });
     metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
     metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
@@ -102,6 +81,53 @@ void copyMetadata(const gls::tiff_metadata& source, gls::tiff_metadata* destinat
     }
 }
 
+void saveStrippedDNG(const std::string& file_name, const gls::image<gls::luma_pixel_16>& inputImage, const gls::tiff_metadata& dng_metadata, const gls::tiff_metadata& exif_metadata) {
+    gls::tiff_metadata my_exif_metadata;
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FNUMBER);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREPROGRAM);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSURETIME);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEORIGINAL);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEDIGITIZED);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIME);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIMEORIGINAL);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIMEDIGITIZED);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_COMPONENTSCONFIGURATION);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_SHUTTERSPEEDVALUE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_APERTUREVALUE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREBIASVALUE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_MAXAPERTUREVALUE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_METERINGMODE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LIGHTSOURCE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FLASH);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FOCALLENGTH);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_COLORSPACE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_SENSINGMETHOD);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_WHITEBALANCE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_BODYSERIALNUMBER);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSSPECIFICATION);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSMAKE);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSMODEL);
+    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSSERIALNUMBER);
+
+    // Write out a stripped DNG files with minimal metadata
+    inputImage.write_dng_file(file_name, /*compression=*/ gls::JPEG, &dng_metadata, &my_exif_metadata);
+}
+
+void transcodeAdobeDNG(const std::filesystem::path& input_path) {
+    gls::tiff_metadata dng_metadata, exif_metadata;
+    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.4955, -0.6760, -0.1453, -0.1341, 1.0072, 0.1269, -0.0647, 0.1987, 0.4304 } });
+    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 1.73344, 1, 1 / 1.68018 } });
+//    dng_metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
+//    dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 2, 1, 1, 0 } });
+//    dng_metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
+//    // dng_metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0x3fff } });
+    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
+
+    auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_fixed.dng";
+    saveStrippedDNG(output_file, *inputImage, dng_metadata, exif_metadata);
+}
+
 gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::path& input_path) {
     const DemosaicParameters demosaicParameters = {
         .contrast = 1.05,
@@ -116,70 +142,61 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::
 
     const auto iso = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS)[0];
 
-    auto rgb_image = demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ true);
+    auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
+    saveStrippedDNG(output_file, *inputImage, dng_metadata, exif_metadata);
 
-//    gls::tiff_metadata my_exif_metadata;
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FNUMBER);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREPROGRAM);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSURETIME);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEORIGINAL);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_DATETIMEDIGITIZED);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIME);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIMEORIGINAL);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_OFFSETTIMEDIGITIZED);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_COMPONENTSCONFIGURATION);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_SHUTTERSPEEDVALUE);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_APERTUREVALUE);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_EXPOSUREBIASVALUE);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_MAXAPERTUREVALUE);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_METERINGMODE);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LIGHTSOURCE);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FLASH);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_FOCALLENGTH);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_COLORSPACE);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_SENSINGMETHOD);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_WHITEBALANCE);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_BODYSERIALNUMBER);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSSPECIFICATION);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSMAKE);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSMODEL);
-//    copyMetadata(exif_metadata, &my_exif_metadata, EXIFTAG_LENSSERIALNUMBER);
-//
-//    // Write out a stripped DNG files with minimal metadata
-//    auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
-//    inputImage->write_dng_file(output_file, /*compression=*/ gls::NONE, &dng_metadata, &my_exif_metadata);
+    return demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false);
+}
 
-    return rgb_image;
+gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesystem::path& input_path) {
+    const DemosaicParameters demosaicParameters = {
+        .contrast = 1.05,
+        .saturation = 1.0,
+        .toneCurveSlope = 3.5,
+        .sharpening = 1.25,
+        .sharpeningRadius = 7,
+    };
+
+    gls::tiff_metadata dng_metadata, exif_metadata;
+    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 0.2468, -0.2485, 0.9018, -0.9060, 1.9690, -0.0630, 3.4279, -1.6351, -0.5652 } });
+    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 1.0737, 1.0000, 1 / 1.0313 } });
+    dng_metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
+    dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 2, 1, 1, 0 } });
+
+    const auto iso = 100; // getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS)[0];
+
+    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata);
+    return demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false);
 }
 
 int main(int argc, const char* argv[]) {
     printf("RawPipeline Test!\n");
 
     if (argc > 1) {
-        auto input_dir = std::filesystem::path(argv[1]);
-
-        std::vector<std::filesystem::path> directory_listing;
-        std::copy(std::filesystem::directory_iterator(input_dir), std::filesystem::directory_iterator(),
-                  std::back_inserter(directory_listing));
-        std::sort(directory_listing.begin(), directory_listing.end());
-
-        for (const auto& input_path : directory_listing) {
-            if (input_path.extension() != ".dng" || input_path.filename().string().starts_with(".")) {
-                continue;
-            }
-
-            LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
-
-            const auto rgb_image = demosaicAdobeDNG(input_path);
-            rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
-        }
-
-//        auto input_path = std::filesystem::path(argv[1]);
+//        auto input_dir = std::filesystem::path(argv[1]);
 //
-//        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+//        std::vector<std::filesystem::path> directory_listing;
+//        std::copy(std::filesystem::directory_iterator(input_dir), std::filesystem::directory_iterator(),
+//                  std::back_inserter(directory_listing));
+//        std::sort(directory_listing.begin(), directory_listing.end());
 //
-//        const auto rgb_image = demosaicAdobeDNG(input_path);
-//        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
+//        for (const auto& input_path : directory_listing) {
+//            if (input_path.extension() != ".dng" || input_path.filename().string().starts_with(".")) {
+//                continue;
+//            }
+//
+//            LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+//
+//            // transcodeAdobeDNG(input_path);
+//            const auto rgb_image = demosaicAdobeDNG(input_path);
+//            rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
+//        }
+
+        auto input_path = std::filesystem::path(argv[1]);
+
+        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+
+        const auto rgb_image = demosaicIMX492V2DNG(input_path);
+        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
     }
 }

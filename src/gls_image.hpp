@@ -29,6 +29,8 @@
 #include "gls_image_png.h"
 #include "gls_image_tiff.h"
 
+// #define USE_FP16_FLOATS 1
+
 namespace gls {
 
 struct point {
@@ -150,7 +152,7 @@ typedef basic_luma_alpha_pixel<float> luma_alpha_pixel_fp32;
 typedef basic_rgb_pixel<float> rgb_pixel_fp32;
 typedef basic_rgba_pixel<float> rgba_pixel_fp32;
 
-#if !(__APPLE__ && TARGET_CPU_X86_64)
+#if USE_FP16_FLOATS && !(__APPLE__ && TARGET_CPU_X86_64)
 typedef __fp16 float16_t;
 typedef basic_luma_pixel<float16_t> luma_pixel_fp16;
 typedef basic_luma_alpha_pixel<float16_t> luma_alpha_pixel_fp16;
@@ -158,10 +160,10 @@ typedef basic_rgb_pixel<float16_t> rgb_pixel_fp16;
 typedef basic_rgba_pixel<float16_t> rgba_pixel_fp16;
 #endif
 
-#if (__APPLE__ && TARGET_CPU_X86_64)
-typedef float float_type;
-#else
+#if USE_FP16_FLOATS && !(__APPLE__ && TARGET_CPU_X86_64)
 typedef float16_t float_type;
+#else
+typedef float float_type;
 #endif
 typedef basic_luma_pixel<float_type> luma_pixel_float;
 typedef basic_luma_alpha_pixel<float_type> luma_alpha_pixel_float;
@@ -371,7 +373,7 @@ class image : public basic_image<T> {
 
     // Write image to DNG file
     void write_dng_file(const std::string& filename, tiff_compression compression = tiff_compression::NONE,
-                        tiff_metadata* dng_metadata = nullptr, tiff_metadata* exif_metadata = nullptr) const {
+                        const tiff_metadata* dng_metadata = nullptr, const tiff_metadata* exif_metadata = nullptr) const {
         typedef typename T::dataType dataType;
         auto row_pointer = [this](int row) -> dataType* { return (dataType*)(*this)[row]; };
         gls::write_dng_file(filename, basic_image<T>::width, basic_image<T>::height, T::channels, T::bit_depth,

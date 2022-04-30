@@ -457,6 +457,7 @@ gls::Matrix<size, 3> pseudoinverse(const gls::Matrix<size, 3>& in) {
     gls::Matrix<size, 3> out;
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < 3; j++) {
+            out[i][j] = 0;
             for (int k = 0; k < 3; k++) {
                 out[i][j] += work[j][k + 3] * in[i][k];
             }
@@ -477,6 +478,16 @@ std::ostream& operator<<(std::ostream& os, const Vector<N>& v) {
     }
     return os;
 }
+
+//std::ostream& operator<<(std::ostream& os, std::span<float>& s) {
+//    for (int i = 0; i < s.size(); i++) {
+//        os << s[i];
+//        if (i < s.size() - 1) {
+//            os << ", ";
+//        }
+//    }
+//    return os;
+//}
 
 template <int N, int M>
 std::ostream& operator<<(std::ostream& os, const Matrix<N, M>& m) {

@@ -53,7 +53,7 @@ void resampleImage(gls::OpenCLContext* glsContext, const std::string& kernelName
 template <typename T>
 void reassembleImage(gls::OpenCLContext* glsContext, const gls::cl_image_2d<T>& inputImageDenoised0,
                      const gls::cl_image_2d<T>& inputImage1, const gls::cl_image_2d<T>& inputImageDenoised1,
-                     float sharpening, gls::cl_image_2d<T>* outputImage);
+                     float sharpening, float lumaSigma, gls::cl_image_2d<T>* outputImage);
 
 void transformImage(gls::OpenCLContext* glsContext,
                     const gls::cl_image_2d<gls::rgba_pixel_float>& linearImage,
@@ -67,7 +67,7 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
 
 void denoiseImage(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                  const DenoiseParameters& denoiseParameters,
+                  const DenoiseParameters& denoiseParameters, bool tight,
                   gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
 
 #endif /* demosaic_cl_hpp */

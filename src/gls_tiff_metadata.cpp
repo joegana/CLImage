@@ -200,7 +200,7 @@ void readExifMetaData(TIFF* tif, tiff_metadata* exif_metadata) {
     }
 }
 
-void writeExifMetadata(TIFF* tif, tiff_metadata* exif_metadata) {
+void writeExifMetadata(TIFF* tif, const tiff_metadata* exif_metadata) {
     TIFFWriteDirectory(tif);
 
     if (TIFFCreateEXIFDirectory(tif) != 0) {
@@ -286,7 +286,7 @@ void writeMetadataString(TIFF* tif, const TIFFField* tf, const tiff_metadata_ite
     }
 }
 
-void writeMetadataForTag(TIFF* tif, tiff_metadata* metadata, ttag_t tag) {
+void writeMetadataForTag(TIFF* tif, const tiff_metadata* metadata, ttag_t tag) {
     const auto entry = metadata->find(tag);
     if (entry != metadata->end()) {
         const TIFFField* tf = TIFFFieldWithTag(tif, tag);

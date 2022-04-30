@@ -38,9 +38,9 @@ void readAllTIFFTags(TIFF* tif, tiff_metadata* metadata);
 
 void augment_libtiff_with_custom_tags();
 
-void writeMetadataForTag(TIFF* tif, tiff_metadata* metadata, ttag_t key);
+void writeMetadataForTag(TIFF* tif, const tiff_metadata* metadata, ttag_t key);
 
-void writeExifMetadata(TIFF* tif, tiff_metadata* exif_metadata);
+void writeExifMetadata(TIFF* tif, const tiff_metadata* exif_metadata);
 
 template <typename T>
 std::vector<T> getVector(const gls::tiff_metadata& metadata, ttag_t key) {

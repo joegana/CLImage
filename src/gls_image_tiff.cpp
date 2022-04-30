@@ -315,6 +315,13 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
         TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &height);
         printf("width: %d, height: %d\n", width, height);
 
+        uint16_t orientation;
+        TIFFGetField(tif, TIFFTAG_ORIENTATION, &orientation);
+        printf("orientation: %d\n", orientation);
+        if (dng_metadata) {
+            dng_metadata->insert({ TIFFTAG_ORIENTATION, orientation });
+        }
+
         auto allocation_successful = image_allocator(width, height);
         if (allocation_successful) {
             printf("TIFFIsTiled: %d\n", TIFFIsTiled(tif));
@@ -422,7 +429,7 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
 }
 
 void write_dng_file(const std::string& filename, int width, int height, int pixel_channels, int pixel_bit_depth,
-                    tiff_compression compression, tiff_metadata* dng_metadata, tiff_metadata* exif_metadata,
+                    tiff_compression compression, const tiff_metadata* dng_metadata, const tiff_metadata* exif_metadata,
                     std::function<uint16_t*(int row)> row_pointer) {
     if (compression != COMPRESSION_NONE &&
         compression != COMPRESSION_JPEG &&
@@ -444,7 +451,16 @@ void write_dng_file(const std::string& filename, int width, int height, int pixe
         TIFFSetField(tif, TIFFTAG_SUBFILETYPE, 0);
         TIFFSetField(tif, TIFFTAG_COMPRESSION, compression);
         TIFFSetField(tif, TIFFTAG_BITSPERSAMPLE, 16);
-        TIFFSetField(tif, TIFFTAG_ORIENTATION, ORIENTATION_TOPLEFT);
+
+        uint16_t orientation = ORIENTATION_TOPLEFT;
+        if (dng_metadata) {
+            const auto entry = dng_metadata->find(TIFFTAG_ORIENTATION);
+            if (entry != dng_metadata->end()) {
+                orientation = std::get<uint16_t>(entry->second);
+            }
+        }
+        TIFFSetField(tif, TIFFTAG_ORIENTATION, orientation);
+
         TIFFSetField(tif, TIFFTAG_PHOTOMETRIC, PHOTOMETRIC_CFA);
         TIFFSetField(tif, TIFFTAG_CFALAYOUT, 1); // Rectangular (or square) layout
         TIFFSetField(tif, TIFFTAG_SAMPLESPERPIXEL, 1);
