@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E50D251528137100003305E9 /* demosaic_utils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D251428137100003305E9 /* demosaic_utils.cpp */; };
+		E50D251728137233003305E9 /* demosaic_cpu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D251628137233003305E9 /* demosaic_cpu.cpp */; };
+		E50D2519281377A5003305E9 /* demosaic_cl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D2518281377A5003305E9 /* demosaic_cl.cpp */; };
 		E5188C6C27EA63A700F2332C /* gls_image_jpeg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E5AD6275276174FC0055F712 /* gls_image_jpeg.cpp */; };
 		E5188C6D27EA63A700F2332C /* gls_cl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E5AD6276276174FC0055F712 /* gls_cl.cpp */; };
 		E5188C6E27EA63A700F2332C /* gls_image_tiff.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E51AACE527E1548400E99B58 /* gls_image_tiff.cpp */; };
@@ -68,6 +71,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		E50D251428137100003305E9 /* demosaic_utils.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = demosaic_utils.cpp; path = ../../src/demosaic_utils.cpp; sourceTree = "<group>"; };
+		E50D251628137233003305E9 /* demosaic_cpu.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = demosaic_cpu.cpp; path = ../../src/demosaic_cpu.cpp; sourceTree = "<group>"; };
+		E50D2518281377A5003305E9 /* demosaic_cl.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = demosaic_cl.cpp; path = ../../src/demosaic_cl.cpp; sourceTree = "<group>"; };
+		E50D251A281378A3003305E9 /* demosaic_cl.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = demosaic_cl.hpp; path = ../../src/demosaic_cl.hpp; sourceTree = "<group>"; };
 		E5188C7F27EA63A700F2332C /* RawPipeline */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = RawPipeline; sourceTree = BUILT_PRODUCTS_DIR; };
 		E51AACE427DFEDFD00E99B58 /* CLImageTest.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CLImageTest.entitlements; sourceTree = "<group>"; };
 		E51AACE527E1548400E99B58 /* gls_image_tiff.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gls_image_tiff.cpp; path = ../../src/gls_image_tiff.cpp; sourceTree = "<group>"; };
@@ -142,6 +149,10 @@
 				E5AB798227EAD0D7008B3D30 /* cl_pipeline.h */,
 				E5AB798027EAD0D7008B3D30 /* demosaic.cpp */,
 				E5AB798127EAD0D7008B3D30 /* demosaic.hpp */,
+				E50D251428137100003305E9 /* demosaic_utils.cpp */,
+				E50D251628137233003305E9 /* demosaic_cpu.cpp */,
+				E50D2518281377A5003305E9 /* demosaic_cl.cpp */,
+				E50D251A281378A3003305E9 /* demosaic_cl.hpp */,
 				E5AB798427EAD0D7008B3D30 /* main.cpp */,
 				E5AB797F27EAD0D7008B3D30 /* raw_pipeline.cpp */,
 			);
@@ -198,6 +209,7 @@
 				E5AD627A276174FC0055F712 /* gls_cl_image.hpp */,
 				E5AD6276276174FC0055F712 /* gls_cl.cpp */,
 				E5AD627D276174FC0055F712 /* gls_cl.hpp */,
+				E5AD6274276174FC0055F712 /* gls_image.hpp */,
 				E5AD6275276174FC0055F712 /* gls_image_jpeg.cpp */,
 				E5AD627B276174FC0055F712 /* gls_image_jpeg.h */,
 				E5AD6277276174FC0055F712 /* gls_image_png.cpp */,
@@ -206,7 +218,6 @@
 				E51AACE627E1548400E99B58 /* gls_image_tiff.h */,
 				E5AB799A27ED59C0008B3D30 /* gls_tiff_metadata.cpp */,
 				E5AB799B27ED59C0008B3D30 /* gls_tiff_metadata.hpp */,
-				E5AD6274276174FC0055F712 /* gls_image.hpp */,
 				E5AD627E276174FC0055F712 /* gls_logging.cpp */,
 				E5AD6279276174FC0055F712 /* gls_logging.h */,
 				E51AACE827E1AA1500E99B58 /* gls_auto_ptr.hpp */,
@@ -335,7 +346,9 @@
 				E5AB798A27EAD0D7008B3D30 /* cl_pipeline.cpp in Sources */,
 				E5188C6C27EA63A700F2332C /* gls_image_jpeg.cpp in Sources */,
 				E5188C6D27EA63A700F2332C /* gls_cl.cpp in Sources */,
+				E50D251528137100003305E9 /* demosaic_utils.cpp in Sources */,
 				E5AB79A627F21A44008B3D30 /* gls_color_science.cpp in Sources */,
+				E50D2519281377A5003305E9 /* demosaic_cl.cpp in Sources */,
 				E5AB799C27ED59C0008B3D30 /* gls_tiff_metadata.cpp in Sources */,
 				E5AB798827EAD0D7008B3D30 /* demosaic.cpp in Sources */,
 				E5188C6E27EA63A700F2332C /* gls_image_tiff.cpp in Sources */,
@@ -344,6 +357,7 @@
 				E5AB798627EAD0D7008B3D30 /* raw_pipeline.cpp in Sources */,
 				E5AB79A227F159A7008B3D30 /* gls_dng_lossless_jpeg.cpp in Sources */,
 				E5188C7227EA63A700F2332C /* gls_cl_error.cpp in Sources */,
+				E50D251728137233003305E9 /* demosaic_cpu.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
