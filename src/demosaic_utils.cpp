@@ -276,85 +276,58 @@ void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3
     *wb_mul = *wb_mul / (*wb_mul)[1];
 }
 
-// Coordinates of the GretagMacbeth ColorChecker squares
-// x, y, width, height from 2022-04-12-10-43-56-566.dng
-static std::array<gls::rectangle, 24> gmb_samples = {{
-    { 4886, 2882, 285, 273 },
-    { 4505, 2899, 272, 235 },
-    { 4122, 2892, 262, 240 },
-    { 3742, 2900, 256, 225 },
-    { 3352, 2897, 258, 227 },
-    { 2946, 2904, 282, 231 },
-    { 4900, 2526, 274, 244 },
-    { 4513, 2526, 262, 237 },
-    { 4133, 2529, 235, 227 },
-    { 3733, 2523, 254, 237 },
-    { 3347, 2530, 245, 234 },
-    { 2932, 2531, 283, 233 },
-    { 4899, 2151, 283, 252 },
-    { 4519, 2155, 261, 245 },
-    { 4119, 2157, 269, 245 },
-    { 3737, 2160, 246, 226 },
-    { 3335, 2168, 261, 239 },
-    { 2957, 2183, 233, 214 },
-    { 4923, 1784, 265, 243 },
-    { 4531, 1801, 250, 219 },
-    { 4137, 1792, 234, 226 },
-    { 3729, 1790, 254, 230 },
-    { 3337, 1793, 250, 232 },
-    { 2917, 1800, 265, 228 },
-}};
-
-void unpackRawMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
-                       gls::tiff_metadata* metadata,
-                       BayerPattern *bayerPattern,
-                       float *black_level,
-                       float *white_level,
-                       gls::Vector<4> *scale_mul,
-                       gls::Matrix<3, 3> *rgb_cam,
-                       bool auto_white_balance) {
-    const auto color_matrix1 = getVector<float>(*metadata, TIFFTAG_COLORMATRIX1);
-    const auto color_matrix2 = getVector<float>(*metadata, TIFFTAG_COLORMATRIX2);
+void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
+                       gls::tiff_metadata* dng_metadata,
+                       DemosaicParameters* demosaicParameters,
+                       bool auto_white_balance,
+                       const gls::rectangle* gmb_position, bool rotate_180) {
+    const auto color_matrix1 = getVector<float>(*dng_metadata, TIFFTAG_COLORMATRIX1);
+    const auto color_matrix2 = getVector<float>(*dng_metadata, TIFFTAG_COLORMATRIX2);
 
     // If present ColorMatrix2 is usually D65 and ColorMatrix1 is Standard Light A
     const auto& color_matrix = color_matrix2.empty() ? color_matrix1 : color_matrix2;
 
-    auto as_shot_neutral = getVector<float>(*metadata, TIFFTAG_ASSHOTNEUTRAL);
-    const auto black_level_vec = getVector<float>(*metadata, TIFFTAG_BLACKLEVEL);
-    const auto white_level_vec = getVector<uint32_t>(*metadata, TIFFTAG_WHITELEVEL);
-    const auto cfa_pattern = getVector<uint8_t>(*metadata, TIFFTAG_CFAPATTERN);
-
-    *black_level = black_level_vec.empty() ? 0 : black_level_vec[0];
-    *white_level = white_level_vec.empty() ? 0xffff : white_level_vec[0];
-
-    *bayerPattern = std::memcmp(cfa_pattern.data(), "\00\01\01\02", 4) == 0 ? BayerPattern::rggb
-                  : std::memcmp(cfa_pattern.data(), "\02\01\01\00", 4) == 0 ? BayerPattern::bggr
-                  : std::memcmp(cfa_pattern.data(), "\01\00\02\01", 4) == 0 ? BayerPattern::grbg
-                  : BayerPattern::gbrg;
-
+    auto as_shot_neutral = getVector<float>(*dng_metadata, TIFFTAG_ASSHOTNEUTRAL);
     std::cout << "as_shot_neutral: " << gls::Vector<3>(as_shot_neutral) << std::endl;
 
-    // Uncomment this to characterize sensor
-    // colorcheck(rawImage, *bayerPattern, *black_level, gmb_samples);
+    const auto black_level_vec = getVector<float>(*dng_metadata, TIFFTAG_BLACKLEVEL);
+    const auto white_level_vec = getVector<uint32_t>(*dng_metadata, TIFFTAG_WHITELEVEL);
+    const auto cfa_pattern = getVector<uint8_t>(*dng_metadata, TIFFTAG_CFAPATTERN);
+
+    demosaicParameters->black_level = black_level_vec.empty() ? 0 : black_level_vec[0];
+    demosaicParameters->white_level = white_level_vec.empty() ? 0xffff : white_level_vec[0];
+
+    demosaicParameters->bayerPattern = std::memcmp(cfa_pattern.data(), "\00\01\01\02", 4) == 0 ? BayerPattern::rggb
+                                     : std::memcmp(cfa_pattern.data(), "\02\01\01\00", 4) == 0 ? BayerPattern::bggr
+                                     : std::memcmp(cfa_pattern.data(), "\01\00\02\01", 4) == 0 ? BayerPattern::grbg
+                                     : BayerPattern::gbrg;
+
+    std::cout << "bayerPattern: " << demosaicParameters->bayerPattern << std::endl;
 
     gls::Vector<3> cam_mul = 1.0 / gls::Vector<3>(as_shot_neutral);
 
-    // TODO: this should be CameraCalibration * ColorMatrix * AsShotWhite
-    gls::Matrix<3, 3> cam_xyz = color_matrix;
-
-    std::cout << "cam_xyz:\n" << cam_xyz << std::endl;
-
     gls::Vector<3> pre_mul;
-    *rgb_cam = cam_xyz_coeff(&pre_mul, cam_xyz);
+    gls::Matrix<3, 3> cam_xyz;
+    if (gmb_position) {
+        demosaicParameters->raw_nlf = estimateRawParameters(rawImage, &cam_xyz, &pre_mul,
+                                                            demosaicParameters->black_level,
+                                                            demosaicParameters->white_level,
+                                                            demosaicParameters->bayerPattern,
+                                                            *gmb_position, rotate_180);
+    } else {
+        // TODO: this should be CameraCalibration * ColorMatrix * AsShotWhite
+        cam_xyz = color_matrix;
+    }
 
+    // Obtain the rgb_cam matrix and pre_mul
+    demosaicParameters->rgb_cam = cam_xyz_coeff(&pre_mul, cam_xyz);
+
+    std::cout << "cam_xyz:\n" << std::fixed << cam_xyz << std::endl;
     std::cout << "*** pre_mul: " << pre_mul / pre_mul[1] << std::endl;
     std::cout << "*** cam_mul: " << cam_mul << std::endl;
 
-    // Save the whitening transformation
-    const auto inv_cam_white = pre_mul;
-
     if (auto_white_balance) {
-        white_balance(rawImage, &cam_mul, *white_level, *black_level, *bayerPattern);
+        white_balance(rawImage, &cam_mul, demosaicParameters->white_level, demosaicParameters->black_level, demosaicParameters->bayerPattern);
 
         printf("Auto White Balance: %f, %f, %f\n", cam_mul[0], cam_mul[1], cam_mul[2]);
 
@@ -365,47 +338,48 @@ void unpackRawMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
         for (int c = 0; c < 3; c++) {
             as_shot_neutral[c] = 1 / cam_mul[c];
         }
-        (*metadata)[TIFFTAG_ASSHOTNEUTRAL] = as_shot_neutral;
+        (*dng_metadata)[TIFFTAG_ASSHOTNEUTRAL] = as_shot_neutral;
     }
-
-    gls::Matrix<3, 3> mCamMul = {
-        { pre_mul[0] / cam_mul[0], 0, 0 },
-        { 0, pre_mul[1] / cam_mul[1], 0 },
-        { 0, 0, pre_mul[2] / cam_mul[2] }
-    };
 
     // If cam_mul is available use that instead of pre_mul
     for (int i = 0; i < 3; i++) {
         pre_mul[i] = cam_mul[i];
     }
 
-    {
-        const gls::Vector<3> d65_white = { 0.95047, 1.0, 1.08883 };
-        const gls::Vector<3> d50_white = { 0.9642, 1.0000, 0.8249 };
-
-        std::cout << "XYZ D65 White -> sRGB: " << rgb_xyz * d65_white << std::endl;
-        std::cout << "sRGB White -> XYZ D65: " << xyz_rgb * gls::Vector({1, 1, 1}) << std::endl;
-        std::cout << "inverse(cam_xyz) * (1 / pre_mul): " << inverse(cam_xyz) * (1 / pre_mul) << std::endl;
-
-        auto cam_white = inverse(cam_xyz) * xyz_rgb * gls::Vector<3>({ 1, 1, 1 });
-        std::cout << "inverse(cam_xyz) * cam_white: " << cam_xyz * cam_white << ", CCT: " << XYZtoCorColorTemp(cam_xyz * cam_white) << std::endl;
-        std::cout << "xyz_rgb * gls::Vector<3>({ 1, 1, 1 }): " << xyz_rgb * gls::Vector<3>({ 1, 1, 1 }) << ", CCT: " << XYZtoCorColorTemp(xyz_rgb * gls::Vector<3>({ 1, 1, 1 })) << std::endl;
-
-        const auto wb_out = xyz_rgb * *rgb_cam * mCamMul * gls::Vector({1, 1, 1});
-        std::cout << "wb_out: " << wb_out << ", CCT: " << XYZtoCorColorTemp(wb_out) << std::endl;
-
-        const auto no_wb_out = xyz_rgb * *rgb_cam * (1 / inv_cam_white);
-        std::cout << "no_wb_out: " << wb_out << ", CCT: " << XYZtoCorColorTemp(no_wb_out) << std::endl;
-    }
+//    // Save the whitening transformation
+//    const auto inv_cam_white = pre_mul;
+//
+//    gls::Matrix<3, 3> mCamMul = {
+//        { pre_mul[0] / cam_mul[0], 0, 0 },
+//        { 0, pre_mul[1] / cam_mul[1], 0 },
+//        { 0, 0, pre_mul[2] / cam_mul[2] }
+//    };
+//    {
+//        const gls::Vector<3> d65_white = { 0.95047, 1.0, 1.08883 };
+//        const gls::Vector<3> d50_white = { 0.9642, 1.0000, 0.8249 };
+//
+//        std::cout << "XYZ D65 White -> sRGB: " << rgb_xyz * d65_white << std::endl;
+//        std::cout << "sRGB White -> XYZ D65: " << xyz_rgb * gls::Vector({1, 1, 1}) << std::endl;
+//        std::cout << "inverse(cam_xyz) * (1 / pre_mul): " << inverse(cam_xyz) * (1 / pre_mul) << std::endl;
+//
+//        auto cam_white = inverse(cam_xyz) * xyz_rgb * gls::Vector<3>({ 1, 1, 1 });
+//        std::cout << "inverse(cam_xyz) * cam_white: " << cam_xyz * cam_white << ", CCT: " << XYZtoCorColorTemp(cam_xyz * cam_white) << std::endl;
+//        std::cout << "xyz_rgb * gls::Vector<3>({ 1, 1, 1 }): " << xyz_rgb * gls::Vector<3>({ 1, 1, 1 }) << ", CCT: " << XYZtoCorColorTemp(xyz_rgb * gls::Vector<3>({ 1, 1, 1 })) << std::endl;
+//
+//        const auto wb_out = xyz_rgb * demosaicParameters->rgb_cam * mCamMul * gls::Vector({1, 1, 1});
+//        std::cout << "wb_out: " << wb_out << ", CCT: " << XYZtoCorColorTemp(wb_out) << std::endl;
+//
+//        const auto no_wb_out = xyz_rgb * demosaicParameters->rgb_cam * (1 / inv_cam_white);
+//        std::cout << "no_wb_out: " << wb_out << ", CCT: " << XYZtoCorColorTemp(no_wb_out) << std::endl;
+//    }
 
     // Scale Input Image
     auto minmax = std::minmax_element(std::begin(pre_mul), std::end(pre_mul));
     for (int c = 0; c < 4; c++) {
         int pre_mul_idx = c == 3 ? 1 : c;
-        printf("pre_mul[c]: %f, *minmax.second: %f, white_level: %f\n", pre_mul[pre_mul_idx], *minmax.second, *white_level);
-        (*scale_mul)[c] = (pre_mul[pre_mul_idx] / *minmax.first) * 65535.0 / (*white_level - *black_level);
+        (demosaicParameters->scale_mul)[c] = (pre_mul[pre_mul_idx] / *minmax.first) * 65535.0 / (demosaicParameters->white_level - demosaicParameters->black_level);
     }
-    printf("scale_mul: %f, %f, %f, %f\n", (*scale_mul)[0], (*scale_mul)[1], (*scale_mul)[2], (*scale_mul)[3]);
+    printf("scale_mul: %f, %f, %f, %f\n", (demosaicParameters->scale_mul)[0], (demosaicParameters->scale_mul)[1], (demosaicParameters->scale_mul)[2], (demosaicParameters->scale_mul)[3]);
 }
 
 const char* GMBColorNames[24] {
@@ -540,12 +514,12 @@ void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float 
         std::reverse(stats->begin(), stats->end());
     }
 
-    for (int patchIdx = 0; patchIdx < 24; patchIdx++) {
-        std::cout << std::setw(12) << std::setfill(' ') << GMBColorNames[patchIdx] << " - avg: {"
-                  << std::setprecision(2) << (*stats)[patchIdx].mean[0] << ", " << (*stats)[patchIdx].mean[1] << ", " << (*stats)[patchIdx].mean[2] << ", " << (*stats)[patchIdx].mean[3] << "}, var: {"
-                                          << (*stats)[patchIdx].variance[0] << ", " << (*stats)[patchIdx].variance[1] << ", " << (*stats)[patchIdx].variance[2] << ", " << (*stats)[patchIdx].variance[3] << "}" << std::endl;
-
-    }
+//    for (int patchIdx = 0; patchIdx < 24; patchIdx++) {
+//        std::cout << std::setw(12) << std::setfill(' ') << GMBColorNames[patchIdx] << " - avg: {"
+//                  << std::setprecision(2) << (*stats)[patchIdx].mean[0] << ", " << (*stats)[patchIdx].mean[1] << ", " << (*stats)[patchIdx].mean[2] << ", " << (*stats)[patchIdx].mean[3] << "}, var: {"
+//                                          << (*stats)[patchIdx].variance[0] << ", " << (*stats)[patchIdx].variance[1] << ", " << (*stats)[patchIdx].variance[2] << ", " << (*stats)[patchIdx].variance[3] << "}" << std::endl;
+//
+//    }
 
     green_channel.write_png_file("/Users/fabio/green_channel.png", false);
 }
@@ -612,12 +586,11 @@ void colorCheckerStats(gls::image<gls::rgba_pixel_float>* image, const gls::rect
         std::reverse(stats->begin(), stats->end());
     }
 
-    for (int patchIdx = 0; patchIdx < 24; patchIdx++) {
-        std::cout << std::setw(12) << std::setfill(' ') << GMBColorNames[patchIdx] << " - avg: {"
-                  << std::setprecision(2) << (*stats)[patchIdx].mean[0] << ", " << (*stats)[patchIdx].mean[1] << ", " << (*stats)[patchIdx].mean[2] << "}, var: {"
-                                          << (*stats)[patchIdx].variance[0] << ", " << (*stats)[patchIdx].variance[1] << ", " << (*stats)[patchIdx].variance[2] << "}" << std::endl;
-    }
-
+//    for (int patchIdx = 0; patchIdx < 24; patchIdx++) {
+//        std::cout << std::setw(12) << std::setfill(' ') << GMBColorNames[patchIdx] << " - avg: {"
+//                  << std::setprecision(2) << (*stats)[patchIdx].mean[0] << ", " << (*stats)[patchIdx].mean[1] << ", " << (*stats)[patchIdx].mean[2] << "}, var: {"
+//                                          << (*stats)[patchIdx].variance[0] << ", " << (*stats)[patchIdx].variance[1] << ", " << (*stats)[patchIdx].variance[2] << "}" << std::endl;
+//    }
 }
 
 // Slope Regression of a set of points

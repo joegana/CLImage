@@ -27,20 +27,35 @@ enum BayerPattern {
     bggr = 3
 };
 
-typedef struct DemosaicParameters {
-    float contrast;
-    float saturation;
-    float toneCurveSlope;
-    float sharpening;
-    float sharpeningRadius;
-} DemosaicParameters;
-
 typedef struct DenoiseParameters {
     float lumaSigma;
     float cbSigma;
     float crSigma;
     float sharpening;
 } DenoiseParameters;
+
+typedef struct RGBConversionParameters {
+    float contrast;
+    float saturation;
+    float toneCurveSlope;
+} RGBConversionParameters;
+
+typedef struct DemosaicParameters {
+    // Basic Debayering Parameters
+    BayerPattern bayerPattern;
+    float black_level;
+    float white_level;
+    gls::Vector<4> scale_mul;
+    gls::Matrix<3, 3> rgb_cam;
+
+    // Noise Estimation and Reduction parameters
+    std::array<float, 4> raw_nlf;
+    std::array<std::array<float, 3>, 5> pyramidNlfParameters;
+    std::array<DenoiseParameters, 5> pyramidDenoiseParameters;
+
+    // Camera Color Space to RGB Parameters
+    RGBConversionParameters rgbConversionParameters;
+} DemosaicParameters;
 
 const gls::point bayerOffsets[4][4] = {
     { {1, 0}, {0, 0}, {0, 1}, {1, 1} }, // grbg
@@ -66,6 +81,48 @@ const gls::Matrix<3, 3> rgb_xyz = {
 inline uint16_t clamp_uint16(int x) { return x < 0 ? 0 : x > 0xffff ? 0xffff : x; }
 inline uint8_t clamp_uint8(int x) { return x < 0 ? 0 : x > 0xff ? 0xff : x; }
 
+template <typename T>
+gls::rectangle rotate180(const gls::rectangle& rect, const gls::image<T>& image) {
+    return {
+        image.width - rect.x - rect.width,
+        image.height - rect.y - rect.height,
+        rect.width,
+        rect.height
+    };
+}
+
+template <int levels>
+std::array<std::array<float, 3>, levels> lerpNLF(const float NLFData0[levels][3], const float NLFData1[levels][3], float a) {
+    std::array<std::array<float, 3>, levels> result;
+    for (int j = 0; j < levels; j++) {
+        for (int i = 0; i < 3; i++) {
+            result[j][i] = std::lerp(NLFData0[j][i], NLFData1[j][i], a);
+        }
+    }
+    return result;
+}
+
+template <int levels>
+std::array<std::array<float, 3>, levels> nlfFromIso(const float NLFData[6][levels][3], int iso) {
+    iso = std::clamp(iso, 100, 3200);
+    if (iso >= 100 && iso < 200) {
+        float a = (iso - 100) / 100;
+        return lerpNLF<levels>(NLFData[0], NLFData[1], a);
+    } else if (iso >= 200 && iso < 400) {
+        float a = (iso - 200) / 200;
+        return lerpNLF<levels>(NLFData[1], NLFData[2], a);
+    } else if (iso >= 400 && iso < 800) {
+        float a = (iso - 400) / 400;
+        return lerpNLF<levels>(NLFData[2], NLFData[3], a);
+    } else if (iso >= 800 && iso < 1600) {
+        float a = (iso - 800) / 800;
+        return lerpNLF<levels>(NLFData[3], NLFData[4], a);
+    } else /* if (iso >= 1600 && iso <= 3200) */ {
+        float a = (iso - 1600) / 1600;
+        return lerpNLF<levels>(NLFData[4], NLFData[5], a);
+    }
+}
+
 void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);
 
 void interpolateGreen(const gls::image<gls::luma_pixel_16>& rawImage,
@@ -76,9 +133,9 @@ void interpolateRedBlue(gls::image<gls::rgb_pixel_16>* image, BayerPattern bayer
 gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls::luma_pixel_16>& rawImage,
                                                         gls::tiff_metadata* metadata, bool auto_white_balance);
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage,
-                                                      gls::tiff_metadata* metadata, const DemosaicParameters& parameters,
-                                                      int iso, bool auto_white_balance);
+gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
+                                                      DemosaicParameters* demosaicParameters, int iso, bool auto_white_balance,
+                                                      const gls::rectangle* gmb_position, bool rotate_180);
 
 gls::image<gls::rgba_pixel>::unique_ptr fastDemosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
                                                           const DemosaicParameters& demosaicParameters, bool auto_white_balance);
@@ -89,14 +146,10 @@ void colorcheck(const gls::image<gls::luma_pixel_16>& rawImage, BayerPattern bay
 
 void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);
 
-void unpackRawMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
-                       gls::tiff_metadata* metadata,
-                       BayerPattern *bayerPattern,
-                       float *black_level,
-                       float *white_level,
-                       gls::Vector<4> *scale_mul,
-                       gls::Matrix<3, 3> *rgb_cam,
-                       bool auto_white_balance);
+void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
+                       gls::tiff_metadata* dng_metadata,
+                       DemosaicParameters* demosaicParameters,
+                       bool auto_white_balance, const gls::rectangle* gmb_position, bool rotate_180);
 
 gls::Matrix<3, 3> cam_ycbcr(const gls::Matrix<3, 3>& rgb_cam);
 

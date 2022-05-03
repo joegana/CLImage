@@ -202,23 +202,19 @@ void interpolateRedBlue(gls::image<gls::rgb_pixel_16>* image, BayerPattern bayer
 
 gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls::luma_pixel_16>& rawImage,
                                                            gls::tiff_metadata* metadata, bool auto_white_balance) {
-    BayerPattern bayerPattern;
-    float black_level;
-    float white_level;
-    gls::Vector<4> scale_mul;
-    gls::Matrix<3, 3> rgb_cam;
+    DemosaicParameters demosaicParameters;
 
-    unpackRawMetadata(rawImage, metadata, &bayerPattern, &black_level, &white_level, &scale_mul, &rgb_cam, auto_white_balance);
+    unpackDNGMetadata(rawImage, metadata, &demosaicParameters, auto_white_balance, nullptr, false);
 
     printf("Begin demosaicing image (CPU)...\n");
 
-    const auto offsets = bayerOffsets[bayerPattern];
+    const auto offsets = bayerOffsets[demosaicParameters.bayerPattern];
     gls::image<gls::luma_pixel_16> scaledRawImage = gls::image<gls::luma_pixel_16>(rawImage.width, rawImage.height);
     for (int y = 0; y < rawImage.height / 2; y++) {
         for (int x = 0; x < rawImage.width / 2; x++) {
             for (int c = 0; c < 4; c++) {
                 const auto& o = offsets[c];
-                scaledRawImage[2 * y + o.y][2 * x + o.x] = clamp_uint16(scale_mul[c] * (rawImage[2 * y + o.y][2 * x + o.x] - black_level));
+                scaledRawImage[2 * y + o.y][2 * x + o.x] = clamp_uint16(demosaicParameters.scale_mul[c] * (rawImage[2 * y + o.y][2 * x + o.x] - demosaicParameters.black_level));
             }
         }
     }
@@ -226,16 +222,16 @@ gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls:
     auto rgbImage = std::make_unique<gls::image<gls::rgb_pixel_16>>(rawImage.width, rawImage.height);
 
     printf("interpolating green channel...\n");
-    interpolateGreen(scaledRawImage, rgbImage.get(), bayerPattern);
+    interpolateGreen(scaledRawImage, rgbImage.get(), demosaicParameters.bayerPattern);
 
     printf("interpolating red and blue channels...\n");
-    interpolateRedBlue(rgbImage.get(), bayerPattern);
+    interpolateRedBlue(rgbImage.get(), demosaicParameters.bayerPattern);
 
     // Transform to RGB space
     for (int y = 0; y < rgbImage->height; y++) {
         for (int x = 0; x < rgbImage->width; x++) {
             auto& p = (*rgbImage)[y][x];
-            const auto op = rgb_cam * /* mCamMul * */ gls::Vector<3>({ (float) p[0], (float) p[1], (float) p[2] });
+            const auto op = demosaicParameters.rgb_cam * /* mCamMul * */ gls::Vector<3>({ (float) p[0], (float) p[1], (float) p[2] });
             p = { clamp_uint16(op[0]), clamp_uint16(op[1]), clamp_uint16(op[2]) };
         }
     }

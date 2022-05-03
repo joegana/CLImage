@@ -28,50 +28,243 @@
 
 static const char* TAG = "RawPipeline Test";
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::path& input_path) {
-    const DemosaicParameters demosaicParameters = {
-        .contrast = 1.2,
-        .saturation = 1.0,
-        .toneCurveSlope = 3.5,
-        .sharpening = 1.25,
-        .sharpeningRadius = 7,
-    };
+static const float NLF_IMX492V2[6][5][3] = {
+    // ISO 100
+    {
+        { 1.1817e-04, 7.6074e-05, 7.2803e-05 },
+        { 5.8687e-05, 5.8594e-05, 5.7425e-05 },
+        { 4.2721e-05, 4.8179e-05, 4.7825e-05 },
+        { 4.1860e-05, 4.3691e-05, 4.3555e-05 },
+        { 3.9072e-05, 4.2436e-05, 4.2401e-05 }
+    },
+    // ISO 200
+    {
+        { 1.9630e-04, 1.0408e-04, 9.8109e-05 },
+        { 7.9714e-05, 7.0176e-05, 6.7911e-05 },
+        { 4.8079e-05, 4.9691e-05, 4.9017e-05 },
+        { 4.2638e-05, 4.1427e-05, 4.1235e-05 },
+        { 3.8430e-05, 3.8918e-05, 3.8855e-05 }
+    },
+    // ISO 400
+    {
+        { 3.3663e-04, 1.6478e-04, 1.5480e-04 },
+        { 1.1355e-04, 9.9108e-05, 9.5292e-05 },
+        { 5.7377e-05, 5.9418e-05, 5.8118e-05 },
+        { 4.5197e-05, 4.3951e-05, 4.3608e-05 },
+        { 4.0192e-05, 3.9776e-05, 3.9616e-05 }
+    },
+    // ISO 800
+    {
+        { 5.7325e-04, 6.4165e-04, 6.1982e-04 },
+        { 1.7906e-04, 5.0318e-04, 4.9554e-04 },
+        { 7.7888e-05, 4.1861e-04, 4.1637e-04 },
+        { 5.7175e-05, 3.8530e-04, 3.8466e-04 },
+        { 4.9265e-05, 3.7448e-04, 3.7418e-04 }
+    },
+    // ISO 1600
+    {
+        { 1.0741e-03, 8.7726e-04, 8.4156e-04 },
+        { 2.8819e-04, 5.9887e-04, 5.8824e-04 },
+        { 1.0201e-04, 4.3271e-04, 4.3060e-04 },
+        { 6.2075e-05, 3.7145e-04, 3.7136e-04 },
+        { 5.0261e-05, 3.5170e-04, 3.5205e-04 }
+    },
+    // ISO 3200
+    {
+        { 2.1776e-03, 1.4413e-03, 1.3562e-03 },
+        { 5.5808e-04, 8.5935e-04, 8.3257e-04 },
+        { 1.8079e-04, 5.1135e-04, 5.0549e-04 },
+        { 8.7985e-05, 3.7854e-04, 3.7755e-04 },
+        { 5.6157e-05, 3.4096e-04, 3.4040e-04 }
+    }
+};
 
-    gls::tiff_metadata metadata;
-    metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.0781, -0.4173, -0.0976, -0.0633, 0.9661, 0.0972, 0.0073, 0.1349, 0.3481 } });
-    metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.001460, 1, 1 / 1.864002 } });
-    metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
-    metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
-    metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
-    metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
-    metadata.insert({ TIFFTAG_MAKE, "Glass Imaging" });
-    metadata.insert({ TIFFTAG_UNIQUECAMERAMODEL, "Glass 1" });
+static const float NLF_IMX492[6][5][3] = {
+    // ISO 100
+    {
+        { 4.9688e-05, 7.3893e-06, 7.2321e-06 },
+        { 1.7964e-05, 6.7149e-06, 6.6420e-06 },
+        { 9.6783e-06, 6.1881e-06, 6.1788e-06 },
+        { 6.0442e-06, 5.9603e-06, 5.9610e-06 },
+        { 4.8379e-06, 5.9137e-06, 5.9116e-06 }
+    },
+    // ISO 200
+    {
+        { 9.3366e-05, 1.7681e-05, 1.7271e-05 },
+        { 3.2632e-05, 1.5746e-05, 1.5601e-05 },
+        { 1.5216e-05, 1.4169e-05, 1.4172e-05 },
+        { 8.6612e-06, 1.3534e-05, 1.3546e-05 },
+        { 6.5333e-06, 1.3421e-05, 1.3422e-05 }
+    },
+    // ISO 400
+    {
+        { 1.7849e-04, 1.3025e-05, 1.2329e-05 },
+        { 5.8104e-05, 1.0410e-05, 1.0084e-05 },
+        { 2.2722e-05, 8.2682e-06, 8.2175e-06 },
+        { 1.0522e-05, 7.4140e-06, 7.4126e-06 },
+        { 6.8284e-06, 7.2507e-06, 7.2523e-06 }
+    },
+    // ISO 800
+    {
+        { 3.4231e-04, 1.4014e-05, 1.2784e-05 },
+        { 1.0282e-04, 9.0075e-06, 8.5997e-06 },
+        { 3.2621e-05, 5.0612e-06, 5.0776e-06 },
+        { 1.1993e-05, 3.4746e-06, 3.5347e-06 },
+        { 9.5276e-06, 3.0545e-06, 3.0695e-06 }
+    },
+    // ISO 1600
+    {
+        { 6.9735e-04, 4.0897e-05, 3.7083e-05 },
+        { 2.1621e-04, 2.5779e-05, 2.4293e-05 },
+        { 6.9542e-05, 1.3638e-05, 1.3477e-05 },
+        { 2.4663e-05, 8.5841e-06, 8.5838e-06 },
+        { 1.6873e-05, 7.2737e-06, 7.3092e-06 }
+    },
+    // ISO 3200
+    {
+        { 1.0793e-03, 4.7093e-05, 4.2599e-05 },
+        { 4.1953e-04, 2.9475e-05, 2.7927e-05 },
+        { 1.3875e-04, 1.5666e-05, 1.5445e-05 },
+        { 4.0298e-05, 9.8978e-06, 9.8024e-06 },
+        { 1.5069e-05, 8.1720e-06, 8.0665e-06 }
+    },
+};
 
-    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &metadata);
-    return demosaicImage(*inputImage, &metadata, demosaicParameters, /*iso=*/ 100, /*auto_white_balance=*/ true);
+std::array<DenoiseParameters, 5> IMX492DenoiseParameters(int iso) {
+    const std::array<std::array<float, 3>, 5> nlf_params = nlfFromIso(NLF_IMX492, iso);
+
+    const float min_green_variance = 5e-05;
+    const float max_green_variance = 5e-03;
+    const float nlf_green_variance = std::clamp(nlf_params[0][1], min_green_variance, max_green_variance);
+
+    const float nlf_alpha = log2(nlf_green_variance / min_green_variance) / log2(max_green_variance / min_green_variance);
+
+    std::array<DenoiseParameters, 5> denoiseParameters = {{
+        {
+            .lumaSigma = std::lerp(0.25f, 0.75f, nlf_alpha),
+            .cbSigma = 4,
+            .crSigma = 4,
+            .sharpening = std::lerp(1.2f, 0.7f, nlf_alpha)
+        },
+        {
+            .lumaSigma = std::lerp(0.25f, 1.5f, nlf_alpha),
+            .cbSigma = 4,
+            .crSigma = 4,
+            .sharpening = std::lerp(1.2f, 1.0f, nlf_alpha)
+        },
+        {
+            .lumaSigma = std::lerp(0.25f, 3.0f, nlf_alpha),
+            .cbSigma = 4,
+            .crSigma = 4,
+            .sharpening = 1.0
+        },
+        {
+            .lumaSigma = std::lerp(0.25f, 3.0f, nlf_alpha),
+            .cbSigma = std::lerp(2.0f, 4.0f, nlf_alpha),
+            .crSigma = std::lerp(2.0f, 4.0f, nlf_alpha),
+            .sharpening = 1.0
+        },
+        {
+            .lumaSigma = std::lerp(0.25f, 3.0f, nlf_alpha),
+            .cbSigma = std::lerp(2.0f, 4.0f, nlf_alpha),
+            .crSigma = std::lerp(2.0f, 4.0f, nlf_alpha),
+            .sharpening = 1.0
+        }
+    }};
+
+//    for (int i = 0; i < 5; i++) {
+//        denoiseParameters[i].lumaSigma *= sqrt(nlf_params[i][0]);
+//        denoiseParameters[i].cbSigma *= sqrt(nlf_params[i][1]);
+//        denoiseParameters[i].crSigma *= sqrt(nlf_params[i][2]);
+//    }
+
+    return denoiseParameters;
 }
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492PNG(const std::filesystem::path& input_path) {
-    const DemosaicParameters demosaicParameters = {
-        .contrast = 1.05,
-        .saturation = 1.0,
-        .toneCurveSlope = 3.5,
-        .sharpening = 1.25,
-        .sharpeningRadius = 7,
+gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::path& input_path) {
+    DemosaicParameters demosaicParameters = {
+        .rgbConversionParameters.contrast = 1.05,
+        .rgbConversionParameters.saturation = 1.0,
+        .rgbConversionParameters.toneCurveSlope = 3.5,
     };
 
-    gls::tiff_metadata metadata;
-    metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 2.1398, -0.8140, -0.2020, -0.0906, 0.9968, 0.0938, -0.0131, 0.2584, 0.6197 } });
-    metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.001460, 1, 1 / 1.864002 } });
-    metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
-    metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
-    metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
-    metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
-    metadata.insert({ TIFFTAG_MAKE, "Glass Imaging" });
-    metadata.insert({ TIFFTAG_UNIQUECAMERAMODEL, "Glass 1" });
+    gls::tiff_metadata dng_metadata, exif_metadata;
+    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 0.9998, -0.3819, -0.0747, 0.0013, 0.8728, 0.1259, 0.0472, 0.1029, 0.3574 } });
+    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.0756, 1.0000, 1 / 1.8832 } });
+    dng_metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
+    dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
+    dng_metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
+    dng_metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
+    dng_metadata.insert({ TIFFTAG_MAKE, "Glass Imaging" });
+    dng_metadata.insert({ TIFFTAG_UNIQUECAMERAMODEL, "Glass 1" });
 
-    const auto inputImage = gls::image<gls::luma_pixel_16>::read_png_file(input_path.string());
-    return demosaicImage(*inputImage, &metadata, demosaicParameters, /*iso=*/ 100, /*auto_white_balance=*/ false);
+    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata);
+
+    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ false);
+
+    bool iso = 400;
+    const auto exifIsoSpeedRatings = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
+    if (exifIsoSpeedRatings.size() > 0) {
+        iso = exifIsoSpeedRatings[0];
+    }
+
+    demosaicParameters.pyramidNlfParameters = nlfFromIso(NLF_IMX492, iso);
+    demosaicParameters.pyramidDenoiseParameters = IMX492DenoiseParameters(iso);
+
+    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, iso, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
+}
+
+gls::image<gls::rgba_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem::path& input_path, int iso, const gls::rectangle& rotated_gmb_position, bool rotate_180) {
+    DemosaicParameters demosaicParameters = {
+        .rgbConversionParameters.contrast = 1.05,
+        .rgbConversionParameters.saturation = 1.0,
+        .rgbConversionParameters.toneCurveSlope = 3.5,
+    };
+
+    gls::tiff_metadata dng_metadata;
+    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 0.9998, -0.3819, -0.0747, 0.0013, 0.8728, 0.1259, 0.0472, 0.1029, 0.3574 } });
+    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.0756, 1.0000, 1 / 1.8832 } });
+    dng_metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
+    dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
+    dng_metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
+    dng_metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xfff } });
+    dng_metadata.insert({ TIFFTAG_MAKE, "Glass Imaging" });
+    dng_metadata.insert({ TIFFTAG_UNIQUECAMERAMODEL, "Glass 1" });
+
+    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata);
+
+    const gls::rectangle gmb_position = rotate180(rotated_gmb_position, *inputImage);
+
+    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
+
+    demosaicParameters.pyramidNlfParameters = nlfFromIso(NLF_IMX492, iso);
+    demosaicParameters.pyramidDenoiseParameters = IMX492DenoiseParameters(iso);
+
+    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false, &rotated_gmb_position, rotate_180);
+}
+
+void calibrateIMX492(const std::filesystem::path& input_dir) {
+    struct CalibrationEntry {
+        int iso;
+        const char* fileName;
+        gls::rectangle gmb_position;
+        bool rotated;
+    };
+
+    std::array<CalibrationEntry, 6> calibration_files = {{
+        { 100, "calibration_100_33333_2022-04-21-17-52-58-947.dng", { 4537-10, 2370, 1652, 1068 }, true },
+        { 200, "calibration_200_25000_2022-04-21-17-53-05-454.dng", { 4537-10, 2370, 1652, 1068 }, true },
+        { 400, "calibration_400_8333_2022-04-21-17-53-12-201.dng", { 4537-10, 2370, 1652, 1068 }, true },
+        { 800, "calibration_800_33333_2022-04-21-17-54-56-251.dng", { 4537-80, 2351, 1652, 1068 }, true },
+        { 1600, "calibration_1600_25000_2022-04-21-17-55-04-540.dng", { 4537-80, 2351, 1652, 1068 }, true },
+        { 3200, "calibration_3200_8333_2022-04-21-17-55-21-836.dng", { 4537-80, 2351, 1652, 1068 }, true },
+    }};
+
+    for (auto& entry : calibration_files) {
+        const auto input_path = input_dir / entry.fileName;
+        const auto rgb_image = calibrateIMX492DNG(input_path, entry.iso, entry.gmb_position, entry.rotated);
+        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_cal_rgb.png", /*skip_alpha=*/ true);
+    }
 }
 
 void copyMetadata(const gls::tiff_metadata& source, gls::tiff_metadata* destination, ttag_t tag) {
@@ -129,32 +322,34 @@ void transcodeAdobeDNG(const std::filesystem::path& input_path) {
 }
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::path& input_path) {
-    const DemosaicParameters demosaicParameters = {
-        .contrast = 1.05,
-        .saturation = 1.0,
-        .toneCurveSlope = 3.5,
-        .sharpening = 1.25,
-        .sharpeningRadius = 5,
+    DemosaicParameters demosaicParameters = {
+        .rgbConversionParameters.contrast = 1.05,
+        .rgbConversionParameters.saturation = 1.0,
+        .rgbConversionParameters.toneCurveSlope = 3.5,
     };
+
+    bool rotate_180 = false;
+    const gls::rectangle gmb_position = { 3425, 770, 1554, 1019 }; // Leica Q2 DPReview
+    // const gls::rectangle gmb_position = { 2434, 506, 1124, 729 }; // Ricoh GR III DPReview
 
     gls::tiff_metadata dng_metadata, exif_metadata;
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
 
+    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
+
     const auto iso = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS)[0];
 
-    auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
-    saveStrippedDNG(output_file, *inputImage, dng_metadata, exif_metadata);
+//    auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
+//    saveStrippedDNG(output_file, *inputImage, dng_metadata, exif_metadata);
 
-    return demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false);
+    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
 }
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesystem::path& input_path) {
-    const DemosaicParameters demosaicParameters = {
-        .contrast = 1.05,
-        .saturation = 1.0,
-        .toneCurveSlope = 3.5,
-        .sharpening = 1.25,
-        .sharpeningRadius = 7,
+    DemosaicParameters demosaicParameters = {
+        .rgbConversionParameters.contrast = 1.05,
+        .rgbConversionParameters.saturation = 1.0,
+        .rgbConversionParameters.toneCurveSlope = 3.5,
     };
 
     gls::tiff_metadata dng_metadata, exif_metadata;
@@ -166,7 +361,10 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesyste
     const auto iso = 100; // getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS)[0];
 
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata);
-    return demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false);
+
+    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr, false);
+
+    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false, nullptr, false);
 }
 
 int main(int argc, const char* argv[]) {
@@ -194,9 +392,13 @@ int main(int argc, const char* argv[]) {
 
         auto input_path = std::filesystem::path(argv[1]);
 
+        LOG_INFO(TAG) << "Calibrating IMX492 sensor from data in: " << input_path.filename() << std::endl;
+
+        calibrateIMX492(input_path.parent_path());
+
         LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
 
-        const auto rgb_image = demosaicIMX492V2DNG(input_path);
+        const auto rgb_image = demosaicIMX492DNG(input_path);
         rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
     }
 }

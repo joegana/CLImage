@@ -543,28 +543,26 @@ float3 contrastBoost(float3 value, float contrast) {
 }
 
 // Make sure this struct is in sync with the declaration in demosaic.hpp
-typedef struct DemosaicParameters {
+typedef struct RGBConversionParameters {
     float contrast;
     float saturation;
     float toneCurveSlope;
-    float sharpening;
-    float sharpeningRadius;
-} DemosaicParameters;
+} RGBConversionParameters;
 
 kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t rgbImage,
-                          constant float3 transform[3], constant DemosaicParameters *demosaicParameters) {
+                          constant float3 transform[3], constant RGBConversionParameters *rgbConversionParameters) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
     float3 pixel_value = read_imagef(linearImage, imageCoordinates).xyz;
 
-    // pixel_value = saturationBoost(pixel_value, demosaicParameters->contrast);
-    pixel_value = contrastBoost(pixel_value, demosaicParameters->contrast);
+    // pixel_value = saturationBoost(pixel_value, rgbConversionParameters->saturation);
+    pixel_value = contrastBoost(pixel_value, rgbConversionParameters->contrast);
 
     float3 rgb = (float3) (dot(transform[0], pixel_value),
                            dot(transform[1], pixel_value),
                            dot(transform[2], pixel_value));
 
-    write_imagef(rgbImage, imageCoordinates, (float4) (toneCurve(clamp(rgb, 0.0, 1.0), demosaicParameters->toneCurveSlope), 0.0));
+    write_imagef(rgbImage, imageCoordinates, (float4) (toneCurve(clamp(rgb, 0.0, 1.0), rgbConversionParameters->toneCurveSlope), 0.0));
 }
 
 kernel void resample(read_only image2d_t inputImage, write_only image2d_t outputImage, sampler_t linear_sampler) {

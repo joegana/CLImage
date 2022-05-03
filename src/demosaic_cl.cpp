@@ -237,7 +237,8 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
     cl::Buffer transformBuffer(paddedTransform.begin(), paddedTransform.end(), true);
 
     // parameter "constant DemosaicParameters *demosaicParameters".
-    cl::Buffer demosaicParametersBuffer(glsContext->clContext(), CL_MEM_USE_HOST_PTR, sizeof(DemosaicParameters), (void *) &demosaicParameters);
+    cl::Buffer demosaicParametersBuffer(glsContext->clContext(), CL_MEM_USE_HOST_PTR, sizeof(RGBConversionParameters),
+                                        (void *) &demosaicParameters.rgbConversionParameters);
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
@@ -260,7 +261,7 @@ void denoiseImage(gls::OpenCLContext* glsContext,
                                     cl::Image2D   // outputImage
                                     >(program, tight ? "denoiseImageTight" : "denoiseImageLoose");
 
-    std::cout << "denoiseImage with parameters: " << denoiseParameters.lumaSigma << ", " << denoiseParameters.crSigma << ", " << denoiseParameters.cbSigma << std::endl;
+    // std::cout << "denoiseImage with parameters: " << denoiseParameters.lumaSigma << ", " << denoiseParameters.crSigma << ", " << denoiseParameters.cbSigma << std::endl;
 
     cl::Buffer denoiseParametersBuffer(glsContext->clContext(), CL_MEM_USE_HOST_PTR, sizeof(DenoiseParameters), (void *) &denoiseParameters);
 

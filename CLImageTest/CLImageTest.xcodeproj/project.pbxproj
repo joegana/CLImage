@@ -75,6 +75,7 @@
 		E50D251628137233003305E9 /* demosaic_cpu.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = demosaic_cpu.cpp; path = ../../src/demosaic_cpu.cpp; sourceTree = "<group>"; };
 		E50D2518281377A5003305E9 /* demosaic_cl.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = demosaic_cl.cpp; path = ../../src/demosaic_cl.cpp; sourceTree = "<group>"; };
 		E50D251A281378A3003305E9 /* demosaic_cl.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = demosaic_cl.hpp; path = ../../src/demosaic_cl.hpp; sourceTree = "<group>"; };
+		E50D251B2820A7A8003305E9 /* pyramidal_denoise.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = pyramidal_denoise.hpp; path = ../../src/pyramidal_denoise.hpp; sourceTree = "<group>"; };
 		E5188C7F27EA63A700F2332C /* RawPipeline */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = RawPipeline; sourceTree = BUILT_PRODUCTS_DIR; };
 		E51AACE427DFEDFD00E99B58 /* CLImageTest.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CLImageTest.entitlements; sourceTree = "<group>"; };
 		E51AACE527E1548400E99B58 /* gls_image_tiff.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gls_image_tiff.cpp; path = ../../src/gls_image_tiff.cpp; sourceTree = "<group>"; };
@@ -147,6 +148,7 @@
 			children = (
 				E5AB798327EAD0D7008B3D30 /* cl_pipeline.cpp */,
 				E5AB798227EAD0D7008B3D30 /* cl_pipeline.h */,
+				E50D251B2820A7A8003305E9 /* pyramidal_denoise.hpp */,
 				E5AB798027EAD0D7008B3D30 /* demosaic.cpp */,
 				E5AB798127EAD0D7008B3D30 /* demosaic.hpp */,
 				E50D251428137100003305E9 /* demosaic_utils.cpp */,
