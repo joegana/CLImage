@@ -40,6 +40,11 @@ typedef struct RGBConversionParameters {
     float toneCurveSlope;
 } RGBConversionParameters;
 
+typedef struct NoiseModel {
+    gls::Vector<4> rawNlf;
+    gls::Matrix<5, 3> pyramidNlf;
+} NoiseModel;
+
 typedef struct DemosaicParameters {
     // Basic Debayering Parameters
     BayerPattern bayerPattern;
@@ -49,9 +54,8 @@ typedef struct DemosaicParameters {
     gls::Matrix<3, 3> rgb_cam;
 
     // Noise Estimation and Reduction parameters
-    gls::Vector<4> raw_nlf;
-    gls::Matrix<5, 3> pyramidNlfParameters;
-    std::array<DenoiseParameters, 5> pyramidDenoiseParameters;
+    NoiseModel noiseModel;
+    std::array<DenoiseParameters, 5> denoiseParameters;
 
     // Camera Color Space to RGB Parameters
     RGBConversionParameters rgbConversionParameters;
@@ -92,7 +96,7 @@ gls::rectangle rotate180(const gls::rectangle& rect, const gls::image<T>& image)
 }
 
 template <int levels>
-gls::Matrix<levels, 3> lerpNLF(const float NLFData0[levels][3], const float NLFData1[levels][3], float a) {
+gls::Matrix<levels, 3> lerpNLF(const gls::Matrix<levels, 3>& NLFData0, const gls::Matrix<levels, 3>& NLFData1, float a) {
     gls::Matrix<levels, 3> result;
     for (int j = 0; j < levels; j++) {
         for (int i = 0; i < 3; i++) {
@@ -103,23 +107,23 @@ gls::Matrix<levels, 3> lerpNLF(const float NLFData0[levels][3], const float NLFD
 }
 
 template <int levels>
-gls::Matrix<levels, 3> nlfFromIso(const float NLFData[6][levels][3], int iso) {
+gls::Matrix<levels, 3> nlfFromIso(const std::array<NoiseModel, 6>& NLFData, int iso) {
     iso = std::clamp(iso, 100, 3200);
     if (iso >= 100 && iso < 200) {
         float a = (iso - 100) / 100;
-        return lerpNLF<levels>(NLFData[0], NLFData[1], a);
+        return lerpNLF<levels>(NLFData[0].pyramidNlf, NLFData[1].pyramidNlf, a);
     } else if (iso >= 200 && iso < 400) {
         float a = (iso - 200) / 200;
-        return lerpNLF<levels>(NLFData[1], NLFData[2], a);
+        return lerpNLF<levels>(NLFData[1].pyramidNlf, NLFData[2].pyramidNlf, a);
     } else if (iso >= 400 && iso < 800) {
         float a = (iso - 400) / 400;
-        return lerpNLF<levels>(NLFData[2], NLFData[3], a);
+        return lerpNLF<levels>(NLFData[2].pyramidNlf, NLFData[3].pyramidNlf, a);
     } else if (iso >= 800 && iso < 1600) {
         float a = (iso - 800) / 800;
-        return lerpNLF<levels>(NLFData[3], NLFData[4], a);
+        return lerpNLF<levels>(NLFData[3].pyramidNlf, NLFData[4].pyramidNlf, a);
     } else /* if (iso >= 1600 && iso <= 3200) */ {
         float a = (iso - 1600) / 1600;
-        return lerpNLF<levels>(NLFData[4], NLFData[5], a);
+        return lerpNLF<levels>(NLFData[4].pyramidNlf, NLFData[5].pyramidNlf, a);
     }
 }
 

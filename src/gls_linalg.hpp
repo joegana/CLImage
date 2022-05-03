@@ -469,7 +469,7 @@ gls::Matrix<size, 3> pseudoinverse(const gls::Matrix<size, 3>& in) {
 // --- Utility Functions ---
 
 template <size_t N>
-std::ostream& operator<<(std::ostream& os, const Vector<N>& v) {
+inline std::ostream& operator<<(std::ostream& os, const Vector<N>& v) {
     for (int i = 0; i < N; i++) {
         os << v[i];
         if (i < N - 1) {
@@ -479,25 +479,10 @@ std::ostream& operator<<(std::ostream& os, const Vector<N>& v) {
     return os;
 }
 
-//std::ostream& operator<<(std::ostream& os, std::span<float>& s) {
-//    for (int i = 0; i < s.size(); i++) {
-//        os << s[i];
-//        if (i < s.size() - 1) {
-//            os << ", ";
-//        }
-//    }
-//    return os;
-//}
-
 template <size_t N, size_t M>
-std::ostream& operator<<(std::ostream& os, const Matrix<N, M>& m) {
+inline std::ostream& operator<<(std::ostream& os, const Matrix<N, M>& m) {
     for (int j = 0; j < N; j++) {
-        for (int i = 0; i < M; i++) {
-            os << m[j][i];
-            if (j < N - 1 || i < M -1) {
-                os << ", ";
-            }
-        }
+        os << m[j] << ",";
         if (j < N-1) {
             os << std::endl;
         }
@@ -506,5 +491,21 @@ std::ostream& operator<<(std::ostream& os, const Matrix<N, M>& m) {
 }
 
 }  // namespace gls
+
+namespace std {
+
+// Useful for printing a gls::Matrix on a single line
+
+inline std::ostream& operator<<(std::ostream& os, const std::span<float>& s) {
+    for (int i = 0; i < s.size(); i++) {
+        os << s[i];
+        if (i < s.size() - 1) {
+            os << ", ";
+        }
+    }
+    return os;
+}
+
+} // namespace std
 
 #endif /* gls_linalg_h */

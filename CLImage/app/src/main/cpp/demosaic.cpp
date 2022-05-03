@@ -39,9 +39,11 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
     scaleRawData(&glsContext, clRawImage, &clScaledRawImage, demosaicParameters->bayerPattern, demosaicParameters->scale_mul,
                  demosaicParameters->black_level / 0xffff);
 
+    NoiseModel* noiseModel = &demosaicParameters->noiseModel;
+
     const float min_green_variance = 5e-05;
     const float max_green_variance = 5e-03;
-    const float nlf_green_variance = std::clamp(demosaicParameters->raw_nlf[1], min_green_variance, max_green_variance);
+    const float nlf_green_variance = std::clamp(noiseModel->rawNlf[1], min_green_variance, max_green_variance);
 
     const float nlf_alpha = log2(nlf_green_variance / min_green_variance) / log2(max_green_variance / min_green_variance);
 
@@ -50,17 +52,17 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
     const float raw_sigma_treshold = nlf_alpha > 0.8 ? 32 : nlf_alpha > 0.6 ? 8 : 4;
 
     gls::cl_image_2d<gls::luma_pixel_float> clGreenImage(clContext, rawImage.width, rawImage.height);
-    interpolateGreen(&glsContext, clScaledRawImage, &clGreenImage, demosaicParameters->bayerPattern, raw_sigma_treshold * sqrt(demosaicParameters->raw_nlf[1]));
+    interpolateGreen(&glsContext, clScaledRawImage, &clGreenImage, demosaicParameters->bayerPattern, raw_sigma_treshold * sqrt(noiseModel->rawNlf[1]));
 
     gls::cl_image_2d<gls::rgba_pixel_float> clLinearRGBImage(clContext, rawImage.width, rawImage.height);
-    interpolateRedBlue(&glsContext, clScaledRawImage, clGreenImage, &clLinearRGBImage, demosaicParameters->bayerPattern, raw_sigma_treshold * sqrt((demosaicParameters->raw_nlf[0] + demosaicParameters->raw_nlf[2]) / 2), rotate_180);
+    interpolateRedBlue(&glsContext, clScaledRawImage, clGreenImage, &clLinearRGBImage, demosaicParameters->bayerPattern, raw_sigma_treshold * sqrt((noiseModel->rawNlf[0] + noiseModel->rawNlf[2]) / 2), rotate_180);
 
     // --- Image Denoising ---
 
     // Convert linear image to YCbCr
-    const auto cam_to_ycbcr = cam_ycbcr(demosaicParameters->rgb_cam);
+    auto cam_to_ycbcr = cam_ycbcr(demosaicParameters->rgb_cam);
 
-    std::cout << "cam_to_ycbcr:\n" << cam_to_ycbcr << std::endl;
+    std::cout << "cam_to_ycbcr: " << cam_to_ycbcr.span() << std::endl;
 
     transformImage(&glsContext, clLinearRGBImage, &clLinearRGBImage, cam_to_ycbcr);
 
@@ -71,10 +73,10 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
     }
 
     PyramidalDenoise<5> pyramidalDenoise(&glsContext, despeckledImage ? *despeckledImage : clLinearRGBImage);
-    auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, &demosaicParameters->pyramidDenoiseParameters,
+    auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, &demosaicParameters->denoiseParameters,
                                                     despeckledImage ? despeckledImage.get() : &clLinearRGBImage,
                                                     demosaicParameters->rgb_cam, iso, gmb_position, false,
-                                                    &demosaicParameters->pyramidNlfParameters);
+                                                    &noiseModel->pyramidNlf);
 
     // Convert result back to camera RGB
     transformImage(&glsContext, *clDenoisedImage, clDenoisedImage, inverse(cam_to_ycbcr));

@@ -28,110 +28,80 @@
 
 static const char* TAG = "RawPipeline Test";
 
-static const float NLF_IMX492V2[6][5][3] = {
+static const std::array<NoiseModel, 6> NLF_IMX492 = {
+{
     // ISO 100
     {
-        { 1.1817e-04, 7.6074e-05, 7.2803e-05 },
-        { 5.8687e-05, 5.8594e-05, 5.7425e-05 },
-        { 4.2721e-05, 4.8179e-05, 4.7825e-05 },
-        { 4.1860e-05, 4.3691e-05, 4.3555e-05 },
-        { 3.9072e-05, 4.2436e-05, 4.2401e-05 }
+        { 5.8995e-05, 5.4218e-05, 5.1745e-05, 5.1355e-05 },
+        {
+            5.3481e-05, 3.5281e-06, 3.2405e-06,
+            1.8786e-05, 2.7665e-06, 2.6178e-06,
+            7.1357e-06, 2.1609e-06, 2.1094e-06,
+            2.8133e-06, 1.8945e-06, 1.8811e-06,
+            2.4673e-06, 1.7760e-06, 1.7709e-06,
+        },
     },
     // ISO 200
     {
-        { 1.9630e-04, 1.0408e-04, 9.8109e-05 },
-        { 7.9714e-05, 7.0176e-05, 6.7911e-05 },
-        { 4.8079e-05, 4.9691e-05, 4.9017e-05 },
-        { 4.2638e-05, 4.1427e-05, 4.1235e-05 },
-        { 3.8430e-05, 3.8918e-05, 3.8855e-05 }
+        { 1.0815e-04, 9.9500e-05, 9.7302e-05, 1.0157e-04 },
+        {
+            1.0065e-04, 8.8690e-06, 8.0997e-06,
+            3.5935e-05, 6.7345e-06, 6.3653e-06,
+            1.3741e-05, 5.0173e-06, 4.9229e-06,
+            5.7054e-06, 4.3027e-06, 4.2826e-06,
+            4.2223e-06, 4.0360e-06, 4.0372e-06,
+        },
     },
     // ISO 400
     {
-        { 3.3663e-04, 1.6478e-04, 1.5480e-04 },
-        { 1.1355e-04, 9.9108e-05, 9.5292e-05 },
-        { 5.7377e-05, 5.9418e-05, 5.8118e-05 },
-        { 4.5197e-05, 4.3951e-05, 4.3608e-05 },
-        { 4.0192e-05, 3.9776e-05, 3.9616e-05 }
+        { 2.0683e-04, 1.9365e-04, 1.9477e-04, 1.9835e-04 },
+        {
+            1.9074e-04, 9.3163e-06, 8.1737e-06,
+            6.4521e-05, 6.4864e-06, 5.8953e-06,
+            2.2293e-05, 4.0991e-06, 3.8989e-06,
+            7.6019e-06, 3.0536e-06, 3.0201e-06,
+            4.1372e-06, 2.6878e-06, 2.6857e-06,
+        },
     },
     // ISO 800
     {
-        { 5.7325e-04, 6.4165e-04, 6.1982e-04 },
-        { 1.7906e-04, 5.0318e-04, 4.9554e-04 },
-        { 7.7888e-05, 4.1861e-04, 4.1637e-04 },
-        { 5.7175e-05, 3.8530e-04, 3.8466e-04 },
-        { 4.9265e-05, 3.7448e-04, 3.7418e-04 }
+        { 4.2513e-04, 3.7694e-04, 4.0732e-04, 3.8399e-04 },
+        {
+            3.5420e-04, 1.5293e-05, 1.3642e-05,
+            1.0796e-04, 9.9380e-06, 9.2489e-06,
+            3.2953e-05, 5.7006e-06, 5.5769e-06,
+            9.0486e-06, 3.9290e-06, 3.9320e-06,
+            2.6178e-06, 3.2478e-06, 3.2460e-06,
+        },
     },
     // ISO 1600
     {
-        { 1.0741e-03, 8.7726e-04, 8.4156e-04 },
-        { 2.8819e-04, 5.9887e-04, 5.8824e-04 },
-        { 1.0201e-04, 4.3271e-04, 4.3060e-04 },
-        { 6.2075e-05, 3.7145e-04, 3.7136e-04 },
-        { 5.0261e-05, 3.5170e-04, 3.5205e-04 }
+        { 8.7268e-04, 7.4568e-04, 8.0404e-04, 7.9171e-04 },
+        {
+            6.9019e-04, 4.3119e-05, 3.8188e-05,
+            2.0779e-04, 2.7140e-05, 2.4992e-05,
+            5.8765e-05, 1.4258e-05, 1.3654e-05,
+            1.5557e-05, 8.7038e-06, 8.6474e-06,
+            6.6261e-06, 7.0836e-06, 7.1265e-06,
+        },
     },
     // ISO 3200
     {
-        { 2.1776e-03, 1.4413e-03, 1.3562e-03 },
-        { 5.5808e-04, 8.5935e-04, 8.3257e-04 },
-        { 1.8079e-04, 5.1135e-04, 5.0549e-04 },
-        { 8.7985e-05, 3.7854e-04, 3.7755e-04 },
-        { 5.6157e-05, 3.4096e-04, 3.4040e-04 }
+        { 2.5013e-03, 1.7729e-03, 2.2981e-03, 1.7412e-03 },
+        {
+            9.4670e-04, 4.4112e-05, 4.0506e-05,
+            3.0640e-04, 2.6943e-05, 2.5852e-05,
+            9.2139e-05, 1.3823e-05, 1.3805e-05,
+            2.6873e-05, 7.9319e-06, 7.9875e-06,
+            8.8264e-06, 5.9351e-06, 5.8881e-06,
+        },
     }
-};
-
-static const float NLF_IMX492[6][5][3] = {
-    // ISO 100
-    {
-        { 4.9688e-05, 7.3893e-06, 7.2321e-06 },
-        { 1.7964e-05, 6.7149e-06, 6.6420e-06 },
-        { 9.6783e-06, 6.1881e-06, 6.1788e-06 },
-        { 6.0442e-06, 5.9603e-06, 5.9610e-06 },
-        { 4.8379e-06, 5.9137e-06, 5.9116e-06 }
-    },
-    // ISO 200
-    {
-        { 9.3366e-05, 1.7681e-05, 1.7271e-05 },
-        { 3.2632e-05, 1.5746e-05, 1.5601e-05 },
-        { 1.5216e-05, 1.4169e-05, 1.4172e-05 },
-        { 8.6612e-06, 1.3534e-05, 1.3546e-05 },
-        { 6.5333e-06, 1.3421e-05, 1.3422e-05 }
-    },
-    // ISO 400
-    {
-        { 1.7849e-04, 1.3025e-05, 1.2329e-05 },
-        { 5.8104e-05, 1.0410e-05, 1.0084e-05 },
-        { 2.2722e-05, 8.2682e-06, 8.2175e-06 },
-        { 1.0522e-05, 7.4140e-06, 7.4126e-06 },
-        { 6.8284e-06, 7.2507e-06, 7.2523e-06 }
-    },
-    // ISO 800
-    {
-        { 3.4231e-04, 1.4014e-05, 1.2784e-05 },
-        { 1.0282e-04, 9.0075e-06, 8.5997e-06 },
-        { 3.2621e-05, 5.0612e-06, 5.0776e-06 },
-        { 1.1993e-05, 3.4746e-06, 3.5347e-06 },
-        { 9.5276e-06, 3.0545e-06, 3.0695e-06 }
-    },
-    // ISO 1600
-    {
-        { 6.9735e-04, 4.0897e-05, 3.7083e-05 },
-        { 2.1621e-04, 2.5779e-05, 2.4293e-05 },
-        { 6.9542e-05, 1.3638e-05, 1.3477e-05 },
-        { 2.4663e-05, 8.5841e-06, 8.5838e-06 },
-        { 1.6873e-05, 7.2737e-06, 7.3092e-06 }
-    },
-    // ISO 3200
-    {
-        { 1.0793e-03, 4.7093e-05, 4.2599e-05 },
-        { 4.1953e-04, 2.9475e-05, 2.7927e-05 },
-        { 1.3875e-04, 1.5666e-05, 1.5445e-05 },
-        { 4.0298e-05, 9.8978e-06, 9.8024e-06 },
-        { 1.5069e-05, 8.1720e-06, 8.0665e-06 }
-    },
-};
+}};
 
 std::array<DenoiseParameters, 5> IMX492DenoiseParameters(int iso) {
-    const gls::Matrix<5, 3> nlf_params = nlfFromIso(NLF_IMX492, iso);
+    const gls::Matrix<5, 3> nlf_params = nlfFromIso<5>(NLF_IMX492, iso);
+
+    // A reasonable denoising calibration on a fairly large range of Noise Variance values
 
     const float min_green_variance = 5e-05;
     const float max_green_variance = 5e-03;
@@ -172,20 +142,16 @@ std::array<DenoiseParameters, 5> IMX492DenoiseParameters(int iso) {
         }
     }};
 
-//    for (int i = 0; i < 5; i++) {
-//        denoiseParameters[i].lumaSigma *= sqrt(nlf_params[i][0]);
-//        denoiseParameters[i].cbSigma *= sqrt(nlf_params[i][1]);
-//        denoiseParameters[i].crSigma *= sqrt(nlf_params[i][2]);
-//    }
-
     return denoiseParameters;
 }
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
-        .rgbConversionParameters.contrast = 1.05,
-        .rgbConversionParameters.saturation = 1.0,
-        .rgbConversionParameters.toneCurveSlope = 3.5,
+        .rgbConversionParameters = {
+            .contrast = 1.05,
+            .saturation = 1.0,
+            .toneCurveSlope = 3.5,
+        }
     };
 
     gls::tiff_metadata dng_metadata, exif_metadata;
@@ -208,8 +174,8 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem:
         iso = exifIsoSpeedRatings[0];
     }
 
-    demosaicParameters.pyramidNlfParameters = nlfFromIso(NLF_IMX492, iso);
-    demosaicParameters.pyramidDenoiseParameters = IMX492DenoiseParameters(iso);
+    demosaicParameters.noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso);
+    demosaicParameters.denoiseParameters = IMX492DenoiseParameters(iso);
 
     return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, iso, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
 }
@@ -232,8 +198,8 @@ gls::image<gls::rgba_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem
 
     unpackDNGMetadata(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
 
-    demosaicParameters->pyramidNlfParameters = nlfFromIso(NLF_IMX492, iso);
-    demosaicParameters->pyramidDenoiseParameters = IMX492DenoiseParameters(iso);
+    demosaicParameters->noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso);
+    demosaicParameters->denoiseParameters = IMX492DenoiseParameters(iso);
 
     return demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false, &rotated_gmb_position, rotate_180);
 }
@@ -255,19 +221,30 @@ void calibrateIMX492(const std::filesystem::path& input_dir) {
         { 3200, "calibration_3200_8333_2022-04-21-17-55-21-836.dng", { 4537-80, 2351, 1652, 1068 }, true },
     }};
 
-    for (auto& entry : calibration_files) {
+    std::array<NoiseModel, 6> noiseModel;
+
+    for (int i = 0; i < calibration_files.size(); i++) {
+        auto& entry = calibration_files[i];
         const auto input_path = input_dir / entry.fileName;
 
         DemosaicParameters demosaicParameters = {
-            .rgbConversionParameters.contrast = 1.05,
-            .rgbConversionParameters.saturation = 1.0,
-            .rgbConversionParameters.toneCurveSlope = 3.5,
+            .rgbConversionParameters = {
+                .contrast = 1.05,
+                .saturation = 1.0,
+                .toneCurveSlope = 3.5,
+            }
         };
 
         const auto rgb_image = calibrateIMX492DNG(input_path, &demosaicParameters, entry.iso, entry.gmb_position, entry.rotated);
         rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_cal_rgb.png", /*skip_alpha=*/ true);
 
+        noiseModel[i] = demosaicParameters.noiseModel;
+    }
 
+    std::cout << "Calibration table for IMX492:" << std::endl;
+    for (int i = 0; i < calibration_files.size(); i++) {
+        std::cout << "{ " << noiseModel[i].rawNlf << " }," << std::endl;
+        std::cout << "{\n" << noiseModel[i].pyramidNlf << "\n}," << std::endl;
     }
 }
 
@@ -327,9 +304,11 @@ void transcodeAdobeDNG(const std::filesystem::path& input_path) {
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
-        .rgbConversionParameters.contrast = 1.05,
-        .rgbConversionParameters.saturation = 1.0,
-        .rgbConversionParameters.toneCurveSlope = 3.5,
+        .rgbConversionParameters = {
+            .contrast = 1.05,
+            .saturation = 1.0,
+            .toneCurveSlope = 3.5,
+        }
     };
 
     bool rotate_180 = false;
@@ -351,9 +330,11 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
-        .rgbConversionParameters.contrast = 1.05,
-        .rgbConversionParameters.saturation = 1.0,
-        .rgbConversionParameters.toneCurveSlope = 3.5,
+        .rgbConversionParameters = {
+            .contrast = 1.05,
+            .saturation = 1.0,
+            .toneCurveSlope = 3.5,
+        }
     };
 
     gls::tiff_metadata dng_metadata, exif_metadata;

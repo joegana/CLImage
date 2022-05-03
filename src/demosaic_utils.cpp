@@ -309,11 +309,11 @@ void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
     gls::Vector<3> pre_mul;
     gls::Matrix<3, 3> cam_xyz;
     if (gmb_position) {
-        demosaicParameters->raw_nlf = estimateRawParameters(rawImage, &cam_xyz, &pre_mul,
-                                                            demosaicParameters->black_level,
-                                                            demosaicParameters->white_level,
-                                                            demosaicParameters->bayerPattern,
-                                                            *gmb_position, rotate_180);
+        demosaicParameters->noiseModel.rawNlf = estimateRawParameters(rawImage, &cam_xyz, &pre_mul,
+                                                                      demosaicParameters->black_level,
+                                                                      demosaicParameters->white_level,
+                                                                      demosaicParameters->bayerPattern,
+                                                                      *gmb_position, rotate_180);
     } else {
         // TODO: this should be CameraCalibration * ColorMatrix * AsShotWhite
         cam_xyz = color_matrix;
@@ -322,7 +322,7 @@ void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
     // Obtain the rgb_cam matrix and pre_mul
     demosaicParameters->rgb_cam = cam_xyz_coeff(&pre_mul, cam_xyz);
 
-    std::cout << "cam_xyz:\n" << std::fixed << cam_xyz << std::endl;
+    std::cout << "cam_xyz: " << std::fixed << cam_xyz.span() << std::endl;
     std::cout << "*** pre_mul: " << pre_mul / pre_mul[1] << std::endl;
     std::cout << "*** cam_mul: " << cam_mul << std::endl;
 
