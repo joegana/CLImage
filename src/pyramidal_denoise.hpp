@@ -35,7 +35,7 @@ struct PyramidalDenoise {
     }
 
     imageType* denoise(gls::OpenCLContext* glsContext, std::array<DenoiseParameters, levels>* denoiseParameters,
-                       imageType* image, const gls::Matrix<3, 3>& rgb_cam, int iso,
+                       imageType* image, const gls::Matrix<3, 3>& rgb_cam,
                        const gls::rectangle* gmb_position, bool rotate_180,
                        gls::Matrix<levels, 3>* nlfParameters) {
         const bool calibrate_nlf = gmb_position != nullptr;

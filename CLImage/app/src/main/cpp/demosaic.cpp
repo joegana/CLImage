@@ -23,7 +23,7 @@
 static const char* TAG = "CLImage Pipeline";
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
-                                                      DemosaicParameters* demosaicParameters, int iso, bool auto_white_balance,
+                                                      DemosaicParameters* demosaicParameters, bool auto_white_balance,
                                                       const gls::rectangle* gmb_position, bool rotate_180) {
     auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -47,7 +47,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
 
     const float nlf_alpha = log2(nlf_green_variance / min_green_variance) / log2(max_green_variance / min_green_variance);
 
-    LOG_INFO(TAG) << "ISO " << iso << ", nlf_green_variance: " << nlf_green_variance << ", nlf_alpha: " << std::fixed << nlf_alpha << std::endl;
+    LOG_INFO(TAG) << "nlf_green_variance: " << nlf_green_variance << ", nlf_alpha: " << std::fixed << nlf_alpha << std::endl;
 
     const float raw_sigma_treshold = nlf_alpha > 0.8 ? 32 : nlf_alpha > 0.6 ? 8 : 4;
 
@@ -75,7 +75,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
     PyramidalDenoise<5> pyramidalDenoise(&glsContext, despeckledImage ? *despeckledImage : clLinearRGBImage);
     auto clDenoisedImage = pyramidalDenoise.denoise(&glsContext, &demosaicParameters->denoiseParameters,
                                                     despeckledImage ? despeckledImage.get() : &clLinearRGBImage,
-                                                    demosaicParameters->rgb_cam, iso, gmb_position, false,
+                                                    demosaicParameters->rgb_cam, gmb_position, false,
                                                     &noiseModel->pyramidNlf);
 
     // Convert result back to camera RGB

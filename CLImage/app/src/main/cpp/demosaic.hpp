@@ -138,7 +138,7 @@ gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls:
                                                         gls::tiff_metadata* metadata, bool auto_white_balance);
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
-                                                      DemosaicParameters* demosaicParameters, int iso, bool auto_white_balance,
+                                                      DemosaicParameters* demosaicParameters, bool auto_white_balance,
                                                       const gls::rectangle* gmb_position, bool rotate_180);
 
 gls::image<gls::rgba_pixel>::unique_ptr fastDemosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,

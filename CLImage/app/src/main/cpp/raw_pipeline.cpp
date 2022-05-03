@@ -177,7 +177,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem:
     demosaicParameters.noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso);
     demosaicParameters.denoiseParameters = IMX492DenoiseParameters(iso);
 
-    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, iso, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
+    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
 }
 
 gls::image<gls::rgba_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem::path& input_path, DemosaicParameters* demosaicParameters,
@@ -198,10 +198,10 @@ gls::image<gls::rgba_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem
 
     unpackDNGMetadata(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
 
-    demosaicParameters->noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso);
+    // demosaicParameters->noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso);
     demosaicParameters->denoiseParameters = IMX492DenoiseParameters(iso);
 
-    return demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false, &rotated_gmb_position, rotate_180);
+    return demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &rotated_gmb_position, rotate_180);
 }
 
 void calibrateIMX492(const std::filesystem::path& input_dir) {
@@ -320,12 +320,12 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::
 
     unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
 
-    const auto iso = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS)[0];
+    // const auto iso = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS)[0];
 
 //    auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
 //    saveStrippedDNG(output_file, *inputImage, dng_metadata, exif_metadata);
 
-    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
+    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
 }
 
 gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesystem::path& input_path) {
@@ -343,13 +343,11 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesyste
     dng_metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
     dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 2, 1, 1, 0 } });
 
-    const auto iso = 100; // getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS)[0];
-
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata);
 
     unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr, false);
 
-    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false, nullptr, false);
+    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr, false);
 }
 
 int main(int argc, const char* argv[]) {
