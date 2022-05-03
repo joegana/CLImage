@@ -21,10 +21,10 @@
 
 namespace gls {
 
-template<int M, int N> struct Matrix;
+template<size_t M, size_t N> struct Matrix;
 
 // ---- Vector Type ----
-template <int N>
+template <size_t N>
 struct Vector : public std::array<float, N> {
     Vector() { }
 
@@ -42,7 +42,7 @@ struct Vector : public std::array<float, N> {
         std::copy(list.begin(), list.end(), this->begin());
     }
 
-    template<int P, int Q>
+    template<size_t P, size_t Q>
     requires (P * Q == N)
     Vector(const Matrix<P, Q>& m) {
         const auto ms = m.span();
@@ -56,7 +56,7 @@ struct Vector : public std::array<float, N> {
 };
 
 // Vector - Vector Multiplication (component-wise)
-template <int N>
+template <size_t N>
 inline Vector<N> operator * (const Vector<N>& a, const Vector<N>& b) {
     auto ita = a.begin();
     auto itb = b.begin();
@@ -66,7 +66,7 @@ inline Vector<N> operator * (const Vector<N>& a, const Vector<N>& b) {
 }
 
 // Vector - Vector Division (component-wise)
-template <int N>
+template <size_t N>
 inline Vector<N> operator / (const Vector<N>& a, const Vector<N>& b) {
     auto ita = a.begin();
     auto itb = b.begin();
@@ -76,7 +76,7 @@ inline Vector<N> operator / (const Vector<N>& a, const Vector<N>& b) {
 }
 
 // Vector - Scalar Addition
-template <int N>
+template <size_t N>
 inline Vector<N> operator + (const Vector<N>& v, const float a) {
     auto itv = v.begin();
     Vector<N> result;
@@ -85,13 +85,13 @@ inline Vector<N> operator + (const Vector<N>& v, const float a) {
 }
 
 // Vector - Scalar Addition (commutative)
-template <int N>
+template <size_t N>
 inline Vector<N> operator + (const float a, const Vector<N>& v) {
     return v + a;
 }
 
 // Vector - Scalar Subtraction
-template <int N>
+template <size_t N>
 inline Vector<N> operator - (const Vector<N>& v, const float a) {
     auto itv = v.begin();
     Vector<N> result;
@@ -100,7 +100,7 @@ inline Vector<N> operator - (const Vector<N>& v, const float a) {
 }
 
 // Scalar - Vector Subtraction
-template <int N>
+template <size_t N>
 inline Vector<N> operator - (const float a, const Vector<N>& v) {
     auto itv = v.begin();
     Vector<N> result;
@@ -109,7 +109,7 @@ inline Vector<N> operator - (const float a, const Vector<N>& v) {
 }
 
 // Vector - Scalar Multiplication
-template <int N>
+template <size_t N>
 inline Vector<N> operator * (const Vector<N>& v, const float a) {
     auto itv = v.begin();
     Vector<N> result;
@@ -118,13 +118,13 @@ inline Vector<N> operator * (const Vector<N>& v, const float a) {
 }
 
 // Scalar - Vector Multiplication (commutative)
-template <int N>
+template <size_t N>
 inline Vector<N> operator * (const float a, const Vector<N>& v) {
     return v * a;
 }
 
 // Vector - Scalar Division
-template <int N>
+template <size_t N>
 inline Vector<N> operator / (const Vector<N>& v, const float a) {
     auto itv = v.begin();
     Vector<N> result;
@@ -133,7 +133,7 @@ inline Vector<N> operator / (const Vector<N>& v, const float a) {
 }
 
 // Scalar - Vector Division
-template <int N>
+template <size_t N>
 inline Vector<N> operator / (const float a, const Vector<N>& v) {
     auto itv = v.begin();
     Vector<N> result;
@@ -143,7 +143,7 @@ inline Vector<N> operator / (const float a, const Vector<N>& v) {
 
 // ---- Matrix Type ----
 
-template <int N, int M>
+template <size_t N, size_t M>
 struct Matrix : public std::array<Vector<M>, N> {
     Matrix() {}
 
@@ -202,18 +202,18 @@ struct Matrix : public std::array<Vector<M>, N> {
     }
 };
 
-template <int N, int M>
+template <size_t N, size_t M>
 std::span<float> span(Matrix<N, M>& m) {
     return std::span(&m[0][0], N * M);
 }
 
-template <int N, int M>
+template <size_t N, size_t M>
 const std::span<const float> span(const Matrix<N, M>& m) {
     return std::span(&m[0][0], N * M);
 }
 
 // Matrix Transpose
-template<int N, int M>
+template<size_t N, size_t M>
 inline Matrix<N, M> transpose(const Matrix<M, N>& m) {
     Matrix<N, M> result;
     for (int j = 0; j < M; j++) {
@@ -225,7 +225,7 @@ inline Matrix<N, M> transpose(const Matrix<M, N>& m) {
 }
 
 // General Matrix Multiplication
-template <int N, int K, int M>
+template <size_t N, size_t K, size_t M>
 inline Matrix<M, N> operator * (const Matrix<M, K>& a, const Matrix<K, N>& b) {
     Matrix<M, N> result;
     const auto bt = transpose(b);
@@ -241,27 +241,27 @@ inline Matrix<M, N> operator * (const Matrix<M, K>& a, const Matrix<K, N>& b) {
 }
 
 // Matrix - Vector Multiplication
-template <int M, int N>
+template <size_t M, size_t N>
 inline Vector<M> operator * (const Matrix<M, N>& a, const Vector<N>& b) {
     const auto result = a * Matrix<N, 1> { b };
     return Vector<M>(result);
 }
 
 // Vector - Matrix Multiplication
-template <int M, int N>
+template <size_t M, size_t N>
 inline Vector<N> operator * (const Vector<M>& a, const Matrix<M, N>& b) {
     const auto result = Matrix<1, N> { a } * b;
     return Vector<N>(result);
 }
 
 // (Square) Matrix Division (Multiplication with Inverse)
-template <int N>
+template <size_t N>
 inline Matrix<N, N> operator / (const Matrix<N, N>& a, const Matrix<N, N>& b) {
     return a * inverse(b);
 }
 
 // Iterate over the elements of the input and output matrices applying a Matrix-Matrix function
-template<int N, int M>
+template<size_t N, size_t M>
 inline Matrix<N, M> apply(const Matrix<M, N>& a, const Matrix<M, N>& b, float (*f)(const float& a, const float& b)) {
     Matrix<N, M> result;
     auto ita = span(a).begin();
@@ -273,7 +273,7 @@ inline Matrix<N, M> apply(const Matrix<M, N>& a, const Matrix<M, N>& b, float (*
 }
 
 // Iterate over the elements of the input and output matrices applying a Matrix-Scalar function
-template<int N, int M>
+template<size_t N, size_t M>
 inline Matrix<N, M> apply(const Matrix<M, N>& a, float b, float (*f)(const float& a, float b)) {
     Matrix<N, M> result;
     auto ita = span(a).begin();
@@ -284,7 +284,7 @@ inline Matrix<N, M> apply(const Matrix<M, N>& a, float b, float (*f)(const float
 }
 
 // Matrix-Scalar Multiplication
-template <int N, int M>
+template <size_t N, size_t M>
 inline Matrix<N, M> operator * (const Matrix<N, M>& a, const float b) {
     return apply(a, b, [](const float& a, float b) {
         return a * b;
@@ -292,7 +292,7 @@ inline Matrix<N, M> operator * (const Matrix<N, M>& a, const float b) {
 }
 
 // Matrix-Scalar Division
-template <int N, int M>
+template <size_t N, size_t M>
 inline Matrix<N, M> operator / (const Matrix<N, M>& a, const float b) {
     return apply(a, b, [](const float& a, float b) {
         return a / b;
@@ -300,7 +300,7 @@ inline Matrix<N, M> operator / (const Matrix<N, M>& a, const float b) {
 }
 
 // Matrix-Matrix Addition
-template <int N, int M>
+template <size_t N, size_t M>
 inline Matrix<N, M> operator + (const Matrix<N, M>& a, const Matrix<N, M>& b) {
     return apply(a, b, [](const float& a, const float& b) {
         return a + b;
@@ -308,7 +308,7 @@ inline Matrix<N, M> operator + (const Matrix<N, M>& a, const Matrix<N, M>& b) {
 }
 
 // Matrix-Scalar Addition
-template <int N, int M>
+template <size_t N, size_t M>
 inline Matrix<N, M> operator + (const Matrix<N, M>& a, const float b) {
     return apply(a, b, [](const float& a, float b) {
         return a + b;
@@ -316,7 +316,7 @@ inline Matrix<N, M> operator + (const Matrix<N, M>& a, const float b) {
 }
 
 // Matrix-Matrix Subtraction
-template <int N, int M>
+template <size_t N, size_t M>
 inline Matrix<N, M> operator - (const Matrix<N, M>& a, const Matrix<N, M>& b) {
     return apply(a, b, [](const float& a, const float& b) {
         return a - b;
@@ -324,7 +324,7 @@ inline Matrix<N, M> operator - (const Matrix<N, M>& a, const Matrix<N, M>& b) {
 }
 
 // Matrix-Scalar Subtraction
-template <int N, int M>
+template <size_t N, size_t M>
 inline Matrix<N, M> operator - (const Matrix<N, M>& a, const float b) {
     return apply(a, b, [](const float& a, float b) {
         return a - b;
@@ -335,7 +335,7 @@ inline Matrix<N, M> operator - (const Matrix<N, M>& a, const float b) {
 
 // Cofactor Matrix
 // https://en.wikipedia.org/wiki/Minor_(linear_algebra)#Inverse_of_a_matrix
-template <int N1, int N2 = N1 - 1>
+template <size_t N1, size_t N2 = N1 - 1>
 inline Matrix<N2, N2> cofactor(const Matrix<N1, N1>& m, int p, int q) {
     assert(p < N1 && q < N1);
 
@@ -364,7 +364,7 @@ inline Matrix<N2, N2> cofactor(const Matrix<N1, N1>& m, int p, int q) {
 
 // Matrix Determinant using Laplace's Cofactor Expansion
 // https://en.wikipedia.org/wiki/Minor_(linear_algebra)#Cofactor_expansion_of_the_determinant
-template <int N>
+template <size_t N>
 inline float determinant(const Matrix<N, N>& m) {
     assert(N > 1);
 
@@ -387,7 +387,7 @@ inline float determinant(const Matrix<1, 1>& m) {
 
 // Matrix Adjoint (Tanspose of the Cofactor Matrix)
 // https://en.wikipedia.org/wiki/Adjugate_matrix
-template <int N>
+template <size_t N>
 inline Matrix<N, N> adjoint(const Matrix<N, N>& m) {
     assert(N > 1);
 
@@ -417,7 +417,7 @@ inline Matrix<1, 1> adjoint(const Matrix<1, 1>& m) {
 
 // Inverse Matrix: inverse(m) = adj(m)/det(m)
 // https://en.wikipedia.org/wiki/Minor_(linear_algebra)#Inverse_of_a_matrix
-template <int N>
+template <size_t N>
 inline Matrix<N, N> inverse(const Matrix<N, N>& m) {
     float det = determinant(m);
     if (det == 0) {
@@ -433,7 +433,7 @@ inline Matrix<N, N> inverse(const Matrix<N, N>& m) {
 }
 
 // From DCRaw (https://www.dechifro.org/dcraw/)
-template <int size>
+template <size_t size>
 gls::Matrix<size, 3> pseudoinverse(const gls::Matrix<size, 3>& in) {
     gls::Matrix<3,6> work;
 
@@ -468,7 +468,7 @@ gls::Matrix<size, 3> pseudoinverse(const gls::Matrix<size, 3>& in) {
 
 // --- Utility Functions ---
 
-template <int N>
+template <size_t N>
 std::ostream& operator<<(std::ostream& os, const Vector<N>& v) {
     for (int i = 0; i < N; i++) {
         os << v[i];
@@ -489,7 +489,7 @@ std::ostream& operator<<(std::ostream& os, const Vector<N>& v) {
 //    return os;
 //}
 
-template <int N, int M>
+template <size_t N, size_t M>
 std::ostream& operator<<(std::ostream& os, const Matrix<N, M>& m) {
     for (int j = 0; j < N; j++) {
         for (int i = 0; i < M; i++) {

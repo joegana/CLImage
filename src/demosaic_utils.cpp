@@ -595,7 +595,7 @@ void colorCheckerStats(gls::image<gls::rgba_pixel_float>* image, const gls::rect
 
 // Slope Regression of a set of points
 template <size_t N>
-std::pair<float, float> linear_regression(const std::array<float, N>& x, const std::array<float, N>& y, float *errorSquare = nullptr) {
+std::pair<float, float> linear_regression(const gls::Vector<N>& x, const gls::Vector<N>& y, float *errorSquare = nullptr) {
     const auto s_x  = std::accumulate(x.begin(), x.end(), 0.0);
     const auto s_y  = std::accumulate(y.begin(), y.end(), 0.0);
     const auto s_xx = std::inner_product(x.begin(), x.end(), x.begin(), 0.0);
@@ -616,11 +616,11 @@ std::pair<float, float> linear_regression(const std::array<float, N>& x, const s
 }
 
 // Estimate the Sensor's Noise Level Function (NLF: variance vs intensity), which is linear going through zero
-std::array<float, 3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* image, const gls::rectangle& gmb_position, bool rotate_180) {
+gls::Vector<3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* image, const gls::rectangle& gmb_position, bool rotate_180) {
     std::array<PatchStats, 24> stats;
     colorCheckerStats(image, gmb_position, rotate_180, &stats);
 
-    std::array<float, 6> y_intensity = {
+    gls::Vector<6> y_intensity = {
         stats[Black].mean[0],
         stats[Neutral_3_5].mean[0],
         stats[Neutral_5].mean[0],
@@ -629,7 +629,7 @@ std::array<float, 3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* im
         stats[White].mean[0]
     };
 
-    std::array<float, 6> y_variance = {
+    gls::Vector<6> y_variance = {
         stats[Black].variance[0],
         stats[Neutral_3_5].variance[0],
         stats[Neutral_5].variance[0],
@@ -638,7 +638,7 @@ std::array<float, 3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* im
         stats[White].variance[0]
     };
 
-    std::array<float, 6> cb_variance = {
+    gls::Vector<6> cb_variance = {
         stats[Black].variance[1],
         stats[Neutral_3_5].variance[1],
         stats[Neutral_5].variance[1],
@@ -647,7 +647,7 @@ std::array<float, 3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* im
         stats[White].variance[1]
     };
 
-    std::array<float, 6> cr_variance = {
+    gls::Vector<6> cr_variance = {
         stats[Black].variance[2],
         stats[Neutral_3_5].variance[2],
         stats[Neutral_5].variance[2],
@@ -675,12 +675,12 @@ std::array<float, 3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* im
     return {nlf_y.second, nlf_cb, nlf_cr};
 }
 
-std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>& rawImage, gls::Matrix<3, 3>* cam_xyz, gls::Vector<3>* pre_mul,
-                                           float black_level, float white_level, BayerPattern bayerPattern, const gls::rectangle& gmb_position, bool rotate_180) {
+gls::Vector<4> estimateRawParameters(const gls::image<gls::luma_pixel_16>& rawImage, gls::Matrix<3, 3>* cam_xyz, gls::Vector<3>* pre_mul,
+                                     float black_level, float white_level, BayerPattern bayerPattern, const gls::rectangle& gmb_position, bool rotate_180) {
     std::array<RawPatchStats, 24> rawStats;
     colorCheckerRawStats(rawImage, black_level, white_level, bayerPattern, gmb_position, rotate_180, &rawStats);
 
-    std::array<float, 6> red_intensity = {
+    gls::Vector<6> red_intensity = {
         rawStats[Black].mean[0],
         rawStats[Neutral_3_5].mean[0],
         rawStats[Neutral_5].mean[0],
@@ -689,7 +689,7 @@ std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>&
         rawStats[White].mean[0]
     };
 
-    std::array<float, 6> green_intensity = {
+    gls::Vector<6> green_intensity = {
         rawStats[Black].mean[1],
         rawStats[Neutral_3_5].mean[1],
         rawStats[Neutral_5].mean[1],
@@ -698,7 +698,7 @@ std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>&
         rawStats[White].mean[1]
     };
 
-    std::array<float, 6> blue_intensity = {
+    gls::Vector<6> blue_intensity = {
         rawStats[Black].mean[2],
         rawStats[Neutral_3_5].mean[2],
         rawStats[Neutral_5].mean[2],
@@ -707,7 +707,7 @@ std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>&
         rawStats[White].mean[2]
     };
 
-    std::array<float, 6> green2_intensity = {
+    gls::Vector<6> green2_intensity = {
         rawStats[Black].mean[3],
         rawStats[Neutral_3_5].mean[3],
         rawStats[Neutral_5].mean[3],
@@ -716,7 +716,7 @@ std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>&
         rawStats[White].mean[3]
     };
 
-    std::array<float, 6> red_variance = {
+    gls::Vector<6> red_variance = {
         rawStats[Black].variance[0],
         rawStats[Neutral_3_5].variance[0],
         rawStats[Neutral_5].variance[0],
@@ -725,7 +725,7 @@ std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>&
         rawStats[White].variance[0]
     };
 
-    std::array<float, 6> green_variance = {
+    gls::Vector<6> green_variance = {
         rawStats[Black].variance[1],
         rawStats[Neutral_3_5].variance[1],
         rawStats[Neutral_5].variance[1],
@@ -734,7 +734,7 @@ std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>&
         rawStats[White].variance[1]
     };
 
-    std::array<float, 6> blue_variance = {
+    gls::Vector<6> blue_variance = {
         rawStats[Black].variance[2],
         rawStats[Neutral_3_5].variance[2],
         rawStats[Neutral_5].variance[2],
@@ -743,7 +743,7 @@ std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>&
         rawStats[White].variance[2]
     };
 
-    std::array<float, 6> green2_variance = {
+    gls::Vector<6> green2_variance = {
         rawStats[Black].variance[3],
         rawStats[Neutral_3_5].variance[3],
         rawStats[Neutral_5].variance[3],
@@ -776,14 +776,14 @@ std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>&
     return { nlf_r.second, nlf_g.second, nlf_b.second, nlf_g2.second };
 }
 
-std::array<float, 3> extractNlfFromColorChecker(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, bool rotate_180, int scale) {
+gls::Vector<3> extractNlfFromColorChecker(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, bool rotate_180, int scale) {
     const gls::rectangle position = {
         (int) round(gmb_position.x / (float) scale),
         (int) round(gmb_position.y / (float) scale),
         (int) round(gmb_position.width / (float) scale),
         (int) round(gmb_position.height / (float) scale)
     };
-    std::array<float, 3> nlf_parameters = estimateNlfParameters(yCbCrImage, position, rotate_180);
+    gls::Vector<3> nlf_parameters = estimateNlfParameters(yCbCrImage, position, rotate_180);
     std::cout << "Scale " << scale << " nlf parameters: " << std::setprecision(4) << std::scientific << nlf_parameters[0] << ", " << nlf_parameters[1] << ", " << nlf_parameters[2] << std::endl;
 
     gls::image<gls::rgb_pixel> output(yCbCrImage->width, yCbCrImage->height);

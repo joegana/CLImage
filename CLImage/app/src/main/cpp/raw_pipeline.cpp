@@ -131,7 +131,7 @@ static const float NLF_IMX492[6][5][3] = {
 };
 
 std::array<DenoiseParameters, 5> IMX492DenoiseParameters(int iso) {
-    const std::array<std::array<float, 3>, 5> nlf_params = nlfFromIso(NLF_IMX492, iso);
+    const gls::Matrix<5, 3> nlf_params = nlfFromIso(NLF_IMX492, iso);
 
     const float min_green_variance = 5e-05;
     const float max_green_variance = 5e-03;
@@ -214,13 +214,8 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem:
     return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, iso, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
 }
 
-gls::image<gls::rgba_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem::path& input_path, int iso, const gls::rectangle& rotated_gmb_position, bool rotate_180) {
-    DemosaicParameters demosaicParameters = {
-        .rgbConversionParameters.contrast = 1.05,
-        .rgbConversionParameters.saturation = 1.0,
-        .rgbConversionParameters.toneCurveSlope = 3.5,
-    };
-
+gls::image<gls::rgba_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem::path& input_path, DemosaicParameters* demosaicParameters,
+                                                           int iso, const gls::rectangle& rotated_gmb_position, bool rotate_180) {
     gls::tiff_metadata dng_metadata;
     dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 0.9998, -0.3819, -0.0747, 0.0013, 0.8728, 0.1259, 0.0472, 0.1029, 0.3574 } });
     dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.0756, 1.0000, 1 / 1.8832 } });
@@ -235,12 +230,12 @@ gls::image<gls::rgba_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem
 
     const gls::rectangle gmb_position = rotate180(rotated_gmb_position, *inputImage);
 
-    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
+    unpackDNGMetadata(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
 
-    demosaicParameters.pyramidNlfParameters = nlfFromIso(NLF_IMX492, iso);
-    demosaicParameters.pyramidDenoiseParameters = IMX492DenoiseParameters(iso);
+    demosaicParameters->pyramidNlfParameters = nlfFromIso(NLF_IMX492, iso);
+    demosaicParameters->pyramidDenoiseParameters = IMX492DenoiseParameters(iso);
 
-    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false, &rotated_gmb_position, rotate_180);
+    return demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*iso=*/ iso, /*auto_white_balance=*/ false, &rotated_gmb_position, rotate_180);
 }
 
 void calibrateIMX492(const std::filesystem::path& input_dir) {
@@ -262,8 +257,17 @@ void calibrateIMX492(const std::filesystem::path& input_dir) {
 
     for (auto& entry : calibration_files) {
         const auto input_path = input_dir / entry.fileName;
-        const auto rgb_image = calibrateIMX492DNG(input_path, entry.iso, entry.gmb_position, entry.rotated);
+
+        DemosaicParameters demosaicParameters = {
+            .rgbConversionParameters.contrast = 1.05,
+            .rgbConversionParameters.saturation = 1.0,
+            .rgbConversionParameters.toneCurveSlope = 3.5,
+        };
+
+        const auto rgb_image = calibrateIMX492DNG(input_path, &demosaicParameters, entry.iso, entry.gmb_position, entry.rotated);
         rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_cal_rgb.png", /*skip_alpha=*/ true);
+
+
     }
 }
 

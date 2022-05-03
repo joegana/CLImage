@@ -49,8 +49,8 @@ typedef struct DemosaicParameters {
     gls::Matrix<3, 3> rgb_cam;
 
     // Noise Estimation and Reduction parameters
-    std::array<float, 4> raw_nlf;
-    std::array<std::array<float, 3>, 5> pyramidNlfParameters;
+    gls::Vector<4> raw_nlf;
+    gls::Matrix<5, 3> pyramidNlfParameters;
     std::array<DenoiseParameters, 5> pyramidDenoiseParameters;
 
     // Camera Color Space to RGB Parameters
@@ -92,8 +92,8 @@ gls::rectangle rotate180(const gls::rectangle& rect, const gls::image<T>& image)
 }
 
 template <int levels>
-std::array<std::array<float, 3>, levels> lerpNLF(const float NLFData0[levels][3], const float NLFData1[levels][3], float a) {
-    std::array<std::array<float, 3>, levels> result;
+gls::Matrix<levels, 3> lerpNLF(const float NLFData0[levels][3], const float NLFData1[levels][3], float a) {
+    gls::Matrix<levels, 3> result;
     for (int j = 0; j < levels; j++) {
         for (int i = 0; i < 3; i++) {
             result[j][i] = std::lerp(NLFData0[j][i], NLFData1[j][i], a);
@@ -103,7 +103,7 @@ std::array<std::array<float, 3>, levels> lerpNLF(const float NLFData0[levels][3]
 }
 
 template <int levels>
-std::array<std::array<float, 3>, levels> nlfFromIso(const float NLFData[6][levels][3], int iso) {
+gls::Matrix<levels, 3> nlfFromIso(const float NLFData[6][levels][3], int iso) {
     iso = std::clamp(iso, 100, 3200);
     if (iso >= 100 && iso < 200) {
         float a = (iso - 100) / 100;
@@ -153,7 +153,7 @@ void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
 
 gls::Matrix<3, 3> cam_ycbcr(const gls::Matrix<3, 3>& rgb_cam);
 
-std::array<float, 3> extractNlfFromColorChecker(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, bool rotate_180, int scale);
+gls::Vector<3> extractNlfFromColorChecker(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, bool rotate_180, int scale);
 
 enum GMBColors {
     DarkSkin        = 0,
@@ -185,19 +185,19 @@ enum GMBColors {
 extern const char* GMBColorNames[24];
 
 struct PatchStats {
-    std::array<float, 3> mean;
-    std::array<float, 3> variance;
+    gls::Vector<3> mean;
+    gls::Vector<3> variance;
 };
 
 struct RawPatchStats {
-    std::array<float, 4> mean;
-    std::array<float, 4> variance;
+    gls::Vector<4> mean;
+    gls::Vector<4> variance;
 };
 
 void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float black_level, float white_level, BayerPattern bayerPattern, const gls::rectangle& gmb_position, bool rotate_180, std::array<RawPatchStats, 24>* stats);
 
-std::array<float, 4> estimateRawParameters(const gls::image<gls::luma_pixel_16>& rawImage, gls::Matrix<3, 3>* cam_xyz, gls::Vector<3>* pre_mul,
-                                           float black_level, float white_level, BayerPattern bayerPattern, const gls::rectangle& gmb_position, bool rotate_180);
+gls::Vector<4> estimateRawParameters(const gls::image<gls::luma_pixel_16>& rawImage, gls::Matrix<3, 3>* cam_xyz, gls::Vector<3>* pre_mul,
+                                     float black_level, float white_level, BayerPattern bayerPattern, const gls::rectangle& gmb_position, bool rotate_180);
 
 void colorcheck(const std::array<RawPatchStats, 24>& rawStats);
 

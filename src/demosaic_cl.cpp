@@ -200,7 +200,7 @@ void transformImage(gls::OpenCLContext* glsContext,
                                     >(program, "transformImage");
 
     // parameter "constant float3 transform[3]". NOTE: float3 are mapped in memory as float4
-    std::array<std::array<float, 4>, 3> paddedTransform;
+    gls::Matrix<3, 4> paddedTransform;
     for (int r = 0; r < 3; r++) {
         for (int c = 0; c < 3; c++) {
             paddedTransform[r][c] = transform[r][c];
@@ -228,7 +228,7 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
                                     >(program, "convertTosRGB");
 
     // parameter "constant float3 transform[3]". NOTE: float3 are mapped in memory as float4
-    std::array<std::array<float, 4>, 3> paddedTransform;
+    gls::Matrix<3, 4> paddedTransform;
     for (int r = 0; r < 3; r++) {
         for (int c = 0; c < 3; c++) {
             paddedTransform[r][c] = transform[r][c];
