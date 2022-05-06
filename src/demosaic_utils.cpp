@@ -930,8 +930,8 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
 
 gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
                                 float white, float black, BayerPattern bayerPattern) {
-    const int hTiles = 4;
-    const int vTiles = 3;
+    const int hTiles = 8;
+    const int vTiles = 6;
 
     const int tileWidth = rawImage.width / hTiles;
     const int tileHeight = rawImage.height / vTiles;
@@ -939,7 +939,7 @@ gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, 
     ThreadPool threadPool(8);
 
     gls::Vector<3> wbGain = { 0, 0, 0 };
-    float wbWeight = 0;
+    int wbCount = 0;
 
     auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -957,11 +957,13 @@ gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, 
             const auto wb = wbGains[y][x].get();
             std::cout << "wbGain(" << x << ":" << y << "): " << wb.wbGain << ", diffAverage: " << wb.diffAverage << std::endl;
 
-            wbGain += wb.diffAverage * wb.wbGain;
-            wbWeight += wb.diffAverage;
+            if (wb.diffAverage > 0.001) {
+                wbGain += wb.wbGain;
+                wbCount++;
+            }
         }
     }
-    wbGain /= wbWeight;
+    wbGain /= wbCount;
     wbGain /= wbGain[0];
 
     auto t_end = std::chrono::high_resolution_clock::now();
