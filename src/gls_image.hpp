@@ -29,7 +29,7 @@
 #include "gls_image_png.h"
 #include "gls_image_tiff.h"
 
-// #define USE_FP16_FLOATS 1
+#define USE_FP16_FLOATS 1
 
 namespace gls {
 
@@ -59,11 +59,13 @@ struct basic_luma_pixel {
         struct {
             T luma;
         };
-        T v[channels];
+        std::array<T, channels> v;
     };
 
     basic_luma_pixel() {}
     basic_luma_pixel(T _luma) : luma(_luma) {}
+    basic_luma_pixel(T _v[channels]) : v(_v) {}
+    basic_luma_pixel(const std::array<T, channels>& _v) { std::copy(_v.begin(), _v.end(), v.begin()); }
 
     operator T() const { return luma; }
 
@@ -82,11 +84,13 @@ struct basic_luma_alpha_pixel {
             T luma;
             T alpha;
         };
-        T v[channels];
+        std::array<T, channels> v;
     };
 
     basic_luma_alpha_pixel() {}
     basic_luma_alpha_pixel(T _luma, T _alpha) : luma(_luma), alpha(_alpha) {}
+    basic_luma_alpha_pixel(T _v[channels]) : v(_v) {}
+    basic_luma_alpha_pixel(const std::array<T, channels>& _v) { std::copy(_v.begin(), _v.end(), v.begin()); }
 
     T& operator[](int c) { return v[c]; }
     const T& operator[](int c) const { return v[c]; }
@@ -94,7 +98,7 @@ struct basic_luma_alpha_pixel {
 
 template <typename T>
 struct basic_rgb_pixel {
-    constexpr static int channels = 3;
+    constexpr static size_t channels = 3;
     constexpr static int bit_depth = 8 * sizeof(T);
     typedef T dataType;
 
@@ -104,11 +108,13 @@ struct basic_rgb_pixel {
             T green;
             T blue;
         };
-        T v[channels];
+        std::array<T, channels> v;
     };
 
     basic_rgb_pixel() {}
     basic_rgb_pixel(T _red, T _green, T _blue) : red(_red), green(_green), blue(_blue) {}
+    basic_rgb_pixel(const T _v[channels]) : v(_v) {}
+    basic_rgb_pixel(const std::array<T, channels>& _v) { std::copy(_v.begin(), _v.end(), v.begin()); }
 
     T& operator[](int c) { return v[c]; }
     const T& operator[](int c) const { return v[c]; }
@@ -127,11 +133,13 @@ struct basic_rgba_pixel {
             T blue;
             T alpha;
         };
-        T v[channels];
+        std::array<T, channels> v;
     };
 
     basic_rgba_pixel() {}
     basic_rgba_pixel(T _red, T _green, T _blue, T _alpha) : red(_red), green(_green), blue(_blue), alpha(_alpha) {}
+    basic_rgba_pixel(T _v[channels]) : v(_v) {}
+    basic_rgba_pixel(const std::array<T, channels>& _v) { std::copy(_v.begin(), _v.end(), v.begin()); }
 
     T& operator[](int c) { return v[c]; }
     const T& operator[](int c) const { return v[c]; }
@@ -214,6 +222,14 @@ class image : public basic_image<T> {
     }
 
     image(int _width, int _height, std::span<T> data) : image<T>(_width, _height, _width, data) {}
+
+    image(image *_base, int _x, int _y, int _width, int _height) : image<T>(_width, _height, _base->stride, std::span(_base->_data.data() + _y * _base->stride + _x, _base->stride * _height)) {
+        assert(_x + _width <= _base->width && _y + _height <= _base->height);
+    }
+
+    image(const image& _base, int _x, int _y, int _width, int _height) : image<T>(_width, _height, _base.stride, std::span(_base._data.data() + _y * _base.stride + _x, _base.stride * _height)) {
+        assert(_x + _width <= _base.width && _y + _height <= _base.height);
+    }
 
     // row access
     T* operator[](int row) { return &_data[stride * row]; }

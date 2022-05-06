@@ -137,9 +137,9 @@ void interpolateRedBlue(gls::image<gls::rgb_pixel_16>* image, BayerPattern bayer
 gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls::luma_pixel_16>& rawImage,
                                                         gls::tiff_metadata* metadata, bool auto_white_balance);
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
-                                                      DemosaicParameters* demosaicParameters, bool auto_white_balance,
-                                                      const gls::rectangle* gmb_position, bool rotate_180);
+gls::image<gls::rgb_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
+                                                     DemosaicParameters* demosaicParameters, bool auto_white_balance,
+                                                     const gls::rectangle* gmb_position, bool rotate_180);
 
 gls::image<gls::rgba_pixel>::unique_ptr fastDemosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
                                                           const DemosaicParameters& demosaicParameters, bool auto_white_balance);
@@ -198,11 +198,15 @@ struct RawPatchStats {
     gls::Vector<4> variance;
 };
 
-void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float black_level, float white_level, BayerPattern bayerPattern, const gls::rectangle& gmb_position, bool rotate_180, std::array<RawPatchStats, 24>* stats);
+void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float black_level, float white_level, BayerPattern bayerPattern,
+                          const gls::rectangle& gmb_position, bool rotate_180, std::array<RawPatchStats, 24>* stats);
 
 gls::Vector<4> estimateRawParameters(const gls::image<gls::luma_pixel_16>& rawImage, gls::Matrix<3, 3>* cam_xyz, gls::Vector<3>* pre_mul,
                                      float black_level, float white_level, BayerPattern bayerPattern, const gls::rectangle& gmb_position, bool rotate_180);
 
 void colorcheck(const std::array<RawPatchStats, 24>& rawStats);
+
+gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
+                                float white, float black, BayerPattern bayerPattern);
 
 #endif /* demosaic_hpp */

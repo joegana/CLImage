@@ -10,6 +10,7 @@
 		E50D251528137100003305E9 /* demosaic_utils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D251428137100003305E9 /* demosaic_utils.cpp */; };
 		E50D251728137233003305E9 /* demosaic_cpu.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D251628137233003305E9 /* demosaic_cpu.cpp */; };
 		E50D2519281377A5003305E9 /* demosaic_cl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D2518281377A5003305E9 /* demosaic_cl.cpp */; };
+		E50D251E282358D6003305E9 /* ThreadPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D251C282358D6003305E9 /* ThreadPool.cpp */; };
 		E5188C6C27EA63A700F2332C /* gls_image_jpeg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E5AD6275276174FC0055F712 /* gls_image_jpeg.cpp */; };
 		E5188C6D27EA63A700F2332C /* gls_cl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E5AD6276276174FC0055F712 /* gls_cl.cpp */; };
 		E5188C6E27EA63A700F2332C /* gls_image_tiff.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E51AACE527E1548400E99B58 /* gls_image_tiff.cpp */; };
@@ -76,6 +77,8 @@
 		E50D2518281377A5003305E9 /* demosaic_cl.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = demosaic_cl.cpp; path = ../../src/demosaic_cl.cpp; sourceTree = "<group>"; };
 		E50D251A281378A3003305E9 /* demosaic_cl.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = demosaic_cl.hpp; path = ../../src/demosaic_cl.hpp; sourceTree = "<group>"; };
 		E50D251B2820A7A8003305E9 /* pyramidal_denoise.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = pyramidal_denoise.hpp; path = ../../src/pyramidal_denoise.hpp; sourceTree = "<group>"; };
+		E50D251C282358D6003305E9 /* ThreadPool.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ThreadPool.cpp; path = ../../src/ThreadPool.cpp; sourceTree = "<group>"; };
+		E50D251D282358D6003305E9 /* ThreadPool.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = ThreadPool.hpp; path = ../../src/ThreadPool.hpp; sourceTree = "<group>"; };
 		E5188C7F27EA63A700F2332C /* RawPipeline */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = RawPipeline; sourceTree = BUILT_PRODUCTS_DIR; };
 		E51AACE427DFEDFD00E99B58 /* CLImageTest.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CLImageTest.entitlements; sourceTree = "<group>"; };
 		E51AACE527E1548400E99B58 /* gls_image_tiff.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gls_image_tiff.cpp; path = ../../src/gls_image_tiff.cpp; sourceTree = "<group>"; };
@@ -157,6 +160,8 @@
 				E50D251A281378A3003305E9 /* demosaic_cl.hpp */,
 				E5AB798427EAD0D7008B3D30 /* main.cpp */,
 				E5AB797F27EAD0D7008B3D30 /* raw_pipeline.cpp */,
+				E50D251C282358D6003305E9 /* ThreadPool.cpp */,
+				E50D251D282358D6003305E9 /* ThreadPool.hpp */,
 			);
 			name = App;
 			sourceTree = "<group>";
@@ -346,6 +351,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E5AB798A27EAD0D7008B3D30 /* cl_pipeline.cpp in Sources */,
+				E50D251E282358D6003305E9 /* ThreadPool.cpp in Sources */,
 				E5188C6C27EA63A700F2332C /* gls_image_jpeg.cpp in Sources */,
 				E5188C6D27EA63A700F2332C /* gls_cl.cpp in Sources */,
 				E50D251528137100003305E9 /* demosaic_utils.cpp in Sources */,

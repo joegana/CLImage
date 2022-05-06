@@ -22,7 +22,7 @@
 
 static const char* TAG = "CLImage Pipeline";
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
+gls::image<gls::rgb_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
                                                       DemosaicParameters* demosaicParameters, bool auto_white_balance,
                                                       const gls::rectangle* gmb_position, bool rotate_180) {
     auto t_start = std::chrono::high_resolution_clock::now();
@@ -86,14 +86,22 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma
     gls::cl_image_2d<gls::rgba_pixel> clsRGBImage(clContext, rawImage.width, rawImage.height);
     convertTosRGB(&glsContext, *clDenoisedImage, &clsRGBImage, demosaicParameters->rgb_cam, *demosaicParameters); // TODO: ???
 
-    auto rgbaImage = clsRGBImage.toImage();
+    auto rgbImage = std::make_unique<gls::image<gls::rgb_pixel>>(clsRGBImage.width, clsRGBImage.height);
+    auto rgbaImage = clsRGBImage.mapImage();
+    for (int y = 0; y < clsRGBImage.height; y++) {
+        for (int x = 0; x < clsRGBImage.width; x++) {
+            const auto& p = rgbaImage[y][x];
+            (*rgbImage)[y][x] = { p.red, p.green, p.blue };
+        }
+    }
+    clsRGBImage.unmapImage(rgbaImage);
 
     auto t_end = std::chrono::high_resolution_clock::now();
     double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
 
     LOG_INFO(TAG) << "OpenCL Pipeline Execution Time: " << (int) elapsed_time_ms << "ms for image of size: " << rawImage.width << " x " << rawImage.height << std::endl;
 
-    return rgbaImage;
+    return rgbImage;
 }
 
 gls::image<gls::rgba_pixel>::unique_ptr fastDemosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,

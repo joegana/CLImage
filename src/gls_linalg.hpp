@@ -37,6 +37,11 @@ struct Vector : public std::array<float, N> {
         std::copy(v.begin(), v.end(), this->begin());
     }
 
+    Vector(const std::array<float, N>& v) {
+        assert(v.size() == N);
+        std::copy(v.begin(), v.end(), this->begin());
+    }
+
     Vector(std::initializer_list<float> list) {
         assert(list.size() == N);
         std::copy(list.begin(), list.end(), this->begin());
@@ -49,11 +54,55 @@ struct Vector : public std::array<float, N> {
         std::copy(ms.begin(), ms.end(), this->begin());
     }
 
+    template <typename T>
+    Vector& operator += (const T& v) {
+        *this = *this + v;
+        return *this;
+    }
+
+    template <typename T>
+    Vector& operator -= (const T& v) {
+        *this = *this - v;
+        return *this;
+    }
+
+    template <typename T>
+    Vector& operator *= (const T& v) {
+        *this = *this * v;
+        return *this;
+    }
+
+    template <typename T>
+    Vector& operator /= (const T& v) {
+        *this = *this / v;
+        return *this;
+    }
+
     // Cast to a const float*
     operator const float*() const {
         return this->data();
     }
 };
+
+// Vector - Vector Addition (component-wise)
+template <size_t N>
+inline Vector<N> operator + (const Vector<N>& a, const Vector<N>& b) {
+    auto ita = a.begin();
+    auto itb = b.begin();
+    Vector<N> result;
+    std::for_each(result.begin(), result.end(), [&](float &r){ r = *ita++ + *itb++; });
+    return result;
+}
+
+// Vector - Vector Subtraction (component-wise)
+template <size_t N>
+inline Vector<N> operator - (const Vector<N>& a, const Vector<N>& b) {
+    auto ita = a.begin();
+    auto itb = b.begin();
+    Vector<N> result;
+    std::for_each(result.begin(), result.end(), [&](float &r){ r = *ita++ - *itb++; });
+    return result;
+}
 
 // Vector - Vector Multiplication (component-wise)
 template <size_t N>
@@ -138,6 +187,14 @@ inline Vector<N> operator / (const float a, const Vector<N>& v) {
     auto itv = v.begin();
     Vector<N> result;
     std::for_each(result.begin(), result.end(), [&a, &itv](float &r){ r = a / *itv++; });
+    return result;
+}
+
+template <size_t N>
+inline Vector<N> abs(const Vector<N>& v) {
+    auto itv = v.begin();
+    Vector<N> result;
+    std::for_each(result.begin(), result.end(), [&itv](float &r){ r = std::abs(*itv++); });
     return result;
 }
 

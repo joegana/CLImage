@@ -819,14 +819,8 @@ gls::Matrix<3, 3> cam_ycbcr(const gls::Matrix<3, 3>& rgb_cam) {
     };
 }
 
-struct WhiteBalanceStats {
-    gls::Vector<3> wbGain;
-    float diffAverage;
-    int whitePixelsCount;
-};
-
-WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
-                                         float white, float black, BayerPattern bayerPattern, float highlightsFraction) {
+gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
+                                float white, float black, BayerPattern bayerPattern, float* diffAverage) {
     const auto& offsets = bayerOffsets[bayerPattern];
     const auto& Or  = offsets[0];
     const auto& Og1 = offsets[1];
@@ -840,8 +834,7 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
         for (int x = 0; x < rawImage.width; x += 2) {
             const auto rgb = gls::Vector<3> {
                 (float) rawImage[y + Or.y][x + Or.x],
-                ((float) rawImage[y + Og1.y][x + Og1.x] +
-                 (float) rawImage[y + Og2.y][x + Og2.x]) / 2,
+                ((float) rawImage[y + Og1.y][x + Og1.x] + (float) rawImage[y + Og2.y][x + Og2.x]) / 2,
                 (float) rawImage[y + Ob.y][x + Ob.x]
             };
             const auto ycbcr = ((rgb - black) / white) * rgb_ycbcr;
@@ -860,6 +853,10 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
     }
     ycbcrDiffAverage /= ycbcrImage.width * ycbcrImage.height;
 
+    if (diffAverage) {
+        *diffAverage = std::max(ycbcrDiffAverage[1], ycbcrDiffAverage[2]);
+    }
+
     std::array<std::pair<gls::Vector<3>, int>, 128> rgbWhiteAverageHist = { };
 
     int whitePixelsCount = 0;
@@ -873,8 +870,7 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
                 fabs(p[2] - (1.5 * ycbcrAverage[2] + copysign(ycbcrDiffAverage[2], ycbcrAverage[2]))) < 1.5 * ycbcrDiffAverage[2]) {
                 const auto rgb = gls::Vector<3> {
                     (float) rawImage[2 * y + Or.y][2 * x + Or.x],
-                    ((float) rawImage[2 * y + Og1.y][2 * x + Og1.x] +
-                     (float) rawImage[2 * y + Og2.y][2 * x + Og2.x]) / 2,
+                    ((float) rawImage[2 * y + Og1.y][2 * x + Og1.x] + (float) rawImage[2 * y + Og2.y][2 * x + Og2.x]) / 2,
                     (float) rawImage[2 * y + Ob.y][2 * x + Ob.x]
                 };
 
@@ -896,11 +892,10 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
     int histMaxEntry = (int) std::clamp((size_t) round((rgbWhiteAverageHist.size() - 1) * YMax), 0UL, rgbWhiteAverageHist.size() - 1);
 
     if (histMaxEntry == 0) {
-        return {
-            .wbGain = { 1, 1, 1 },
-            .diffAverage = 0,
-            .whitePixelsCount = 1
-        };
+        if (diffAverage) {
+            *diffAverage = 0;
+        }
+        return { 1, 1, 1 };
     }
 
     int white90PixelsCount = 0;
@@ -911,7 +906,7 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
         rgbWhite90Average += entry.first;
         white90PixelsCount += entry.second;
 
-        if (white90PixelsCount > highlightsFraction * whitePixelsCount) {
+        if (white90PixelsCount > 0.1 * whitePixelsCount) {
             break;
         }
     }
@@ -920,12 +915,7 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
     std::cout << "histMaxEntry: " << histMaxEntry << ", white90PixelsCount: " << white90PixelsCount << ", whitePixelsCount: " << whitePixelsCount << std::endl;
 
     auto wbGain = YMax / rgbWhite90Average;
-
-    return {
-        .wbGain = wbGain / wbGain[1],
-        .diffAverage = std::max(ycbcrDiffAverage[1], ycbcrDiffAverage[2]),
-        .whitePixelsCount = white90PixelsCount
-    };
+    return wbGain / wbGain[1];
 }
 
 gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
@@ -936,32 +926,36 @@ gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, 
     const int tileWidth = rawImage.width / hTiles;
     const int tileHeight = rawImage.height / vTiles;
 
-    ThreadPool threadPool(8);
+    ThreadPool threadPool(4);
 
     gls::Vector<3> wbGain = { 0, 0, 0 };
-    float wbWeight = 0;
+    int wbCount = 0;
 
     auto t_start = std::chrono::high_resolution_clock::now();
-
-    std::array<std::array<std::future<WhiteBalanceStats>, hTiles>, vTiles> wbGains;
+    
+    std::array<std::array<std::future<std::pair<gls::Vector<3>, float>>, hTiles>, vTiles> wbGains;
     for (int y = 0; y < vTiles; y++) {
         for (int x = 0; x < hTiles; x++) {
-            wbGains[y][x] = threadPool.enqueue([x, y, tileWidth, tileHeight, rgb_ycbcr, white, black, bayerPattern, &rawImage]() -> WhiteBalanceStats {
+            wbGains[y][x] = threadPool.enqueue([x, y, tileWidth, tileHeight, rgb_ycbcr, white, black, bayerPattern, &rawImage]() -> std::pair<gls::Vector<3>, float> {
                 const auto rawTile = gls::image<gls::luma_pixel_16>(rawImage, x * tileWidth, y * tileHeight, tileWidth, tileHeight);
-                return autoWhiteBalanceKernel(rawTile, rgb_ycbcr, white, black, bayerPattern, /*highlightsFraction=*/ 0.1);
+                float diffAverage = 0;
+                const auto wb = autoWhiteBalance(rawTile, rgb_ycbcr, white, black, bayerPattern, &diffAverage);
+                return {wb, diffAverage};
             });
         }
     }
     for (int y = 0; y < vTiles; y++) {
         for (int x = 0; x < hTiles; x++) {
             const auto wb = wbGains[y][x].get();
-            std::cout << "wbGain(" << x << ":" << y << "): " << wb.wbGain << ", diffAverage: " << wb.diffAverage << std::endl;
+            std::cout << "wbGain(" << x << ":" << y << "): " << wb.first << ", diffAverage: " << wb.second << std::endl;
 
-            wbGain += wb.diffAverage * wb.wbGain;
-            wbWeight += wb.diffAverage;
+            /* if (wb.second > 0.005) */ {
+                wbGain += wb.first;
+                wbCount++;
+            }
         }
     }
-    wbGain /= wbWeight;
+    wbGain /= wbCount;
     wbGain /= wbGain[0];
 
     auto t_end = std::chrono::high_resolution_clock::now();

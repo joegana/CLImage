@@ -130,14 +130,14 @@ std::array<DenoiseParameters, 5> IMX492DenoiseParameters(int iso) {
         },
         {
             .lumaSigma = std::lerp(0.25f, 3.0f, nlf_alpha),
-            .cbSigma = std::lerp(2.0f, 4.0f, nlf_alpha),
-            .crSigma = std::lerp(2.0f, 4.0f, nlf_alpha),
+            .cbSigma = 2, // std::lerp(2.0f, 4.0f, nlf_alpha),
+            .crSigma = 2, // std::lerp(2.0f, 4.0f, nlf_alpha),
             .sharpening = 1.0
         },
         {
             .lumaSigma = std::lerp(0.25f, 3.0f, nlf_alpha),
-            .cbSigma = std::lerp(2.0f, 4.0f, nlf_alpha),
-            .crSigma = std::lerp(2.0f, 4.0f, nlf_alpha),
+            .cbSigma = 1, // std::lerp(2.0f, 4.0f, nlf_alpha),
+            .crSigma = 1, // std::lerp(2.0f, 4.0f, nlf_alpha),
             .sharpening = 1.0
         }
     }};
@@ -145,7 +145,7 @@ std::array<DenoiseParameters, 5> IMX492DenoiseParameters(int iso) {
     return denoiseParameters;
 }
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::path& input_path) {
+gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
         .rgbConversionParameters = {
             .contrast = 1.05,
@@ -155,8 +155,8 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem:
     };
 
     gls::tiff_metadata dng_metadata, exif_metadata;
-    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 0.9998, -0.3819, -0.0747, 0.0013, 0.8728, 0.1259, 0.0472, 0.1029, 0.3574 } });
-    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.0756, 1.0000, 1 / 1.8832 } });
+    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.4955, -0.6760, -0.1453, -0.1341, 1.0072, 0.1269, -0.0647, 0.1987, 0.4304 } });
+    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 1.73344, 1, 1 / 1.68018 } });
     dng_metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
     dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
     dng_metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
@@ -166,7 +166,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem:
 
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata);
 
-    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ false);
+    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ true, /*gmb_position=*/ nullptr, /*rotate_180=*/ false);
 
     bool iso = 400;
     const auto exifIsoSpeedRatings = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
@@ -180,11 +180,11 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem:
     return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
 }
 
-gls::image<gls::rgba_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem::path& input_path, DemosaicParameters* demosaicParameters,
+gls::image<gls::rgb_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem::path& input_path, DemosaicParameters* demosaicParameters,
                                                            int iso, const gls::rectangle& rotated_gmb_position, bool rotate_180) {
-    gls::tiff_metadata dng_metadata;
-    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 0.9998, -0.3819, -0.0747, 0.0013, 0.8728, 0.1259, 0.0472, 0.1029, 0.3574 } });
-    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.0756, 1.0000, 1 / 1.8832 } });
+    gls::tiff_metadata dng_metadata, exif_metadata;
+    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1, 0, 0, 0, 1, 0, 0, 0, 1 } });
+    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1, 1, 1 } });
     dng_metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
     dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
     dng_metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
@@ -192,11 +192,17 @@ gls::image<gls::rgba_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem
     dng_metadata.insert({ TIFFTAG_MAKE, "Glass Imaging" });
     dng_metadata.insert({ TIFFTAG_UNIQUECAMERAMODEL, "Glass 1" });
 
-    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata);
+    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
 
     const gls::rectangle gmb_position = rotate180(rotated_gmb_position, *inputImage);
 
     unpackDNGMetadata(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
+
+    // See if the ISO value is present and override
+    const auto exifIsoSpeedRatings = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
+    if (exifIsoSpeedRatings.size() > 0) {
+        iso = exifIsoSpeedRatings[0];
+    }
 
     // demosaicParameters->noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso);
     demosaicParameters->denoiseParameters = IMX492DenoiseParameters(iso);
@@ -302,7 +308,7 @@ void transcodeAdobeDNG(const std::filesystem::path& input_path) {
     saveStrippedDNG(output_file, *inputImage, dng_metadata, exif_metadata);
 }
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::path& input_path) {
+gls::image<gls::rgb_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
         .rgbConversionParameters = {
             .contrast = 1.05,
@@ -328,7 +334,7 @@ gls::image<gls::rgba_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::
     return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
 }
 
-gls::image<gls::rgba_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesystem::path& input_path) {
+gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
         .rgbConversionParameters = {
             .contrast = 1.05,
@@ -354,34 +360,51 @@ int main(int argc, const char* argv[]) {
     printf("RawPipeline Test!\n");
 
     if (argc > 1) {
-//        auto input_dir = std::filesystem::path(argv[1]);
+        auto input_dir = std::filesystem::path(argv[1]);
+
+        std::vector<std::filesystem::path> directory_listing;
+        std::copy(std::filesystem::directory_iterator(input_dir), std::filesystem::directory_iterator(),
+                  std::back_inserter(directory_listing));
+        std::sort(directory_listing.begin(), directory_listing.end());
+
+        for (const auto& input_path : directory_listing) {
+            if (input_path.extension() != ".dng" || input_path.filename().string().starts_with(".")) {
+                continue;
+            }
+
+            LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+
+            // transcodeAdobeDNG(input_path);
+            const auto rgb_image = demosaicIMX492DNG(input_path);
+            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.jpg", 95);
+        }
+
+//        auto input_path = std::filesystem::path(argv[1]);
 //
-//        std::vector<std::filesystem::path> directory_listing;
-//        std::copy(std::filesystem::directory_iterator(input_dir), std::filesystem::directory_iterator(),
-//                  std::back_inserter(directory_listing));
-//        std::sort(directory_listing.begin(), directory_listing.end());
+//        LOG_INFO(TAG) << "Calibrating IMX492 sensor from data in: " << input_path.filename() << std::endl;
 //
-//        for (const auto& input_path : directory_listing) {
-//            if (input_path.extension() != ".dng" || input_path.filename().string().starts_with(".")) {
-//                continue;
+//        DemosaicParameters demosaicParameters = {
+//            .rgbConversionParameters = {
+//                .contrast = 1.05,
+//                .saturation = 1.0,
+//                .toneCurveSlope = 3.5,
 //            }
+//        };
 //
-//            LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+//        bool rotate_180 = true;
+//        // const gls::rectangle& rotated_gmb_position = { 3198, 2237, 1857, 1209 }; // 2022-05-03-14-28-19-729.coords.txt
+//        // const gls::rectangle& rotated_gmb_position = { 2767, 1821, 2887, 1909 }; // 2022-05-03-14-33-36-986.coords.txt
 //
-//            // transcodeAdobeDNG(input_path);
-//            const auto rgb_image = demosaicAdobeDNG(input_path);
-//            rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
-//        }
-
-        auto input_path = std::filesystem::path(argv[1]);
-
-        LOG_INFO(TAG) << "Calibrating IMX492 sensor from data in: " << input_path.filename() << std::endl;
-
-        calibrateIMX492(input_path.parent_path());
-
-        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
-
-        const auto rgb_image = demosaicIMX492DNG(input_path);
-        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
+//        const gls::rectangle& rotated_gmb_position = { 2835, 2709, 2100, 1352 }; // 2022-05-03-17-13-18-618.coords.txt
+//        // const gls::rectangle& rotated_gmb_position = { 3124, 2150, 2113, 1363 }; // 2022-05-03-17-14-20-048.coords.txt
+//
+//        const auto rgb_image = calibrateIMX492DNG(input_path, &demosaicParameters, /*iso=*/ 100, rotated_gmb_position, rotate_180);
+//
+////        calibrateIMX492(input_path.parent_path());
+////
+////        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+////
+////        const auto rgb_image = demosaicIMX492DNG(input_path);
+//        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
     }
 }
