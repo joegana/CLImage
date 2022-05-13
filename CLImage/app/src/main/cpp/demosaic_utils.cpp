@@ -318,13 +318,13 @@ void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
         demosaicParameters->rgb_cam = cam_xyz_coeff(&pre_mul, cam_xyz);
     } else {
         cam_xyz = color_matrix;
+        // Obtain the rgb_cam matrix and pre_mul
+        demosaicParameters->rgb_cam = cam_xyz_coeff(&pre_mul, cam_xyz);
+
         // If cam_mul is available use that instead of pre_mul
         if (!as_shot_neutral.empty()) {
             pre_mul = 1.0 / gls::Vector<3>(as_shot_neutral);
         }
-
-        // Obtain the rgb_cam matrix and pre_mul
-        demosaicParameters->rgb_cam = cam_xyz_coeff(&pre_mul, cam_xyz);
     }
 
     std::cout << "cam_xyz: " << std::fixed << cam_xyz.span() << std::endl;

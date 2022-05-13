@@ -67,7 +67,36 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
 
 void denoiseImage(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                  const DenoiseParameters& denoiseParameters, bool tight,
+                  const gls::Vector<3>& sigma, bool tight,
                   gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
+
+void denoiseImageGuided(gls::OpenCLContext* glsContext,
+                        const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                        const gls::Vector<3>& eps,
+                        gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
+
+void denoiseLumaImage(gls::OpenCLContext* glsContext,
+                      const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                      const DenoiseParameters& denoiseParameters,
+                      gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
+
+void bayerToRawRGBA(gls::OpenCLContext* glsContext,
+                    const gls::cl_image_2d<gls::luma_pixel_16>& rawImage,
+                    gls::cl_image_2d<gls::rgba_pixel_float>* rgbaImage,
+                    BayerPattern bayerPattern);
+
+void rawRGBAToBayer(gls::OpenCLContext* glsContext,
+                    const gls::cl_image_2d<gls::rgba_pixel_float>& rgbaImage,
+                    gls::cl_image_2d<gls::luma_pixel_16>* rawImage,
+                    BayerPattern bayerPattern);
+
+void denoiseRawRGBAImage(gls::OpenCLContext* glsContext,
+                         const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                         const gls::Vector<4> rawSigma,
+                         gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
+
+void despeckleRawRGBAImage(gls::OpenCLContext* glsContext,
+                           const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                           gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
 
 #endif /* demosaic_cl_hpp */

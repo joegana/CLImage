@@ -29,7 +29,7 @@
 #include "gls_image_png.h"
 #include "gls_image_tiff.h"
 
-#define USE_FP16_FLOATS 1
+// #define USE_FP16_FLOATS 1
 
 namespace gls {
 
@@ -59,6 +59,9 @@ struct basic_luma_pixel {
         struct {
             T luma;
         };
+        struct {
+            T x;
+        };
         std::array<T, channels> v;
     };
 
@@ -84,6 +87,10 @@ struct basic_luma_alpha_pixel {
             T luma;
             T alpha;
         };
+        struct {
+            T x;
+            T y;
+        };
         std::array<T, channels> v;
     };
 
@@ -107,6 +114,11 @@ struct basic_rgb_pixel {
             T red;
             T green;
             T blue;
+        };
+        struct {
+            T x;
+            T y;
+            T z;
         };
         std::array<T, channels> v;
     };
@@ -132,6 +144,12 @@ struct basic_rgba_pixel {
             T green;
             T blue;
             T alpha;
+        };
+        struct {
+            T x;
+            T y;
+            T z;
+            T w;
         };
         std::array<T, channels> v;
     };
@@ -160,6 +178,11 @@ typedef basic_luma_alpha_pixel<float> luma_alpha_pixel_fp32;
 typedef basic_rgb_pixel<float> rgb_pixel_fp32;
 typedef basic_rgba_pixel<float> rgba_pixel_fp32;
 
+typedef basic_luma_pixel<float> pixel_fp32;
+typedef basic_luma_alpha_pixel<float> pixel_fp32_2;
+typedef basic_rgb_pixel<float> pixel_fp32_3;
+typedef basic_rgba_pixel<float> pixel_fp32_4;
+
 #if USE_FP16_FLOATS && !(__APPLE__ && TARGET_CPU_X86_64)
 typedef __fp16 float16_t;
 typedef basic_luma_pixel<float16_t> luma_pixel_fp16;
@@ -177,6 +200,11 @@ typedef basic_luma_pixel<float_type> luma_pixel_float;
 typedef basic_luma_alpha_pixel<float_type> luma_alpha_pixel_float;
 typedef basic_rgb_pixel<float_type> rgb_pixel_float;
 typedef basic_rgba_pixel<float_type> rgba_pixel_float;
+
+typedef basic_luma_pixel<float_type> pixel_float;
+typedef basic_luma_alpha_pixel<float_type> pixel_float2;
+typedef basic_rgb_pixel<float_type> pixel_float3;
+typedef basic_rgba_pixel<float_type> pixel_float4;
 
 class tiff_metadata;
 

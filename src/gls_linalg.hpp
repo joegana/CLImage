@@ -16,6 +16,10 @@
 #ifndef gls_linalg_h
 #define gls_linalg_h
 
+#include <array>
+#include <span>
+#include <vector>
+
 #include <iostream>
 #include <stdexcept>
 

@@ -24,6 +24,7 @@
 namespace gls {
 
 template <typename T>
+requires (T::channels == 1 || T::channels == 2 || T::channels == 4)
 class cl_image : public basic_image<T> {
    public:
     typedef std::unique_ptr<cl_image<T>> unique_ptr;

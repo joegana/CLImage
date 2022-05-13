@@ -114,6 +114,11 @@ add_executable(
         climage/gls_color_science.cpp
         cl_pipeline.cpp
         demosaic.cpp
+        demosaic_cl.cpp
+        demosaic_cpu.cpp
+        demosaic_utils.cpp
+        guided_filter.cpp
+        ThreadPool.cpp
         raw_pipeline.cpp
         filesystem/operations.cpp
         filesystem/directory_iterator.cpp

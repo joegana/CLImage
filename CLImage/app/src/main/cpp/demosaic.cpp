@@ -18,13 +18,15 @@
 
 #include "pyramidal_denoise.hpp"
 
+#include "guided_filter.hpp"
+
 #include "gls_logging.h"
 
 static const char* TAG = "CLImage Pipeline";
 
 gls::image<gls::rgb_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_pixel_16>& rawImage, gls::tiff_metadata* metadata,
-                                                      DemosaicParameters* demosaicParameters, bool auto_white_balance,
-                                                      const gls::rectangle* gmb_position, bool rotate_180) {
+                                                     DemosaicParameters* demosaicParameters, bool auto_white_balance,
+                                                     const gls::rectangle* gmb_position, bool rotate_180) {
     auto t_start = std::chrono::high_resolution_clock::now();
 
     gls::OpenCLContext glsContext("");
@@ -35,6 +37,22 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_
     // --- Image Demosaicing ---
 
     gls::cl_image_2d<gls::luma_pixel_16> clRawImage(clContext, rawImage);
+
+//    gls::cl_image_2d<gls::rgba_pixel_float> rgbaRawImage(clContext, rawImage.width/2, rawImage.height/2);
+//    bayerToRawRGBA(&glsContext, clRawImage, &rgbaRawImage, demosaicParameters->bayerPattern);
+//
+//    gls::cl_image_2d<gls::rgba_pixel_float> denoisedRgbaRawImage(clContext, rawImage.width/2, rawImage.height/2);
+//    despeckleRawRGBAImage(&glsContext,
+//                          rgbaRawImage,
+//                          &denoisedRgbaRawImage);
+//
+////    denoiseRawRGBAImage(&glsContext,
+////                        denoisedRgbaRawImage,
+////                        demosaicParameters->noiseModel.rawNlf,
+////                        &rgbaRawImage);
+//
+//    rawRGBAToBayer(&glsContext, denoisedRgbaRawImage, &clRawImage, demosaicParameters->bayerPattern);
+
     gls::cl_image_2d<gls::luma_pixel_float> clScaledRawImage(clContext, rawImage.width, rawImage.height);
     scaleRawData(&glsContext, clRawImage, &clScaledRawImage, demosaicParameters->bayerPattern, demosaicParameters->scale_mul,
                  demosaicParameters->black_level / 0xffff);
@@ -64,10 +82,14 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_
 
     std::cout << "cam_to_ycbcr: " << cam_to_ycbcr.span() << std::endl;
 
+//    auto guidedFilter = GuidedFilter(&glsContext, clLinearRGBImage.width, clLinearRGBImage.height);
+//    guidedFilter.filter(&glsContext, clLinearRGBImage, 5, { 0.001, 0.001, 0.001 }, &clLinearRGBImage);
+
     transformImage(&glsContext, clLinearRGBImage, &clLinearRGBImage, cam_to_ycbcr);
 
     gls::cl_image_2d<gls::rgba_pixel_float>::unique_ptr despeckledImage = nullptr;
     if (nlf_alpha > 0.6) {
+        std::cout << "despeckleYCbCrImage" << std::endl;
         despeckledImage = std::make_unique<gls::cl_image_2d<gls::rgba_pixel_float>>(glsContext.clContext(), clLinearRGBImage.width, clLinearRGBImage.height);
         applyKernel(&glsContext, "despeckleYCbCrImage", clLinearRGBImage, despeckledImage.get());
     }
@@ -77,6 +99,14 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicImage(const gls::image<gls::luma_
                                                     despeckledImage ? despeckledImage.get() : &clLinearRGBImage,
                                                     demosaicParameters->rgb_cam, gmb_position, false,
                                                     &noiseModel->pyramidNlf);
+
+    // denoiseLumaImage(&glsContext, *clDenoisedImage, demosaicParameters->denoiseParameters[0], &clLinearRGBImage);
+
+//    auto boxBlur = BoxBlur<gls::rgba_pixel_float>(&glsContext, clDenoisedImage->width, clDenoisedImage->height);
+//    boxBlur.blur(&glsContext, *clDenoisedImage, 5, clDenoisedImage);
+
+//    auto guidedFilter = GuidedFilter(&glsContext, clDenoisedImage->width, clDenoisedImage->height);
+//    guidedFilter.filter(&glsContext, *clDenoisedImage, 5, { 0.001, 0.001, 0.001 }, clDenoisedImage);
 
     // Convert result back to camera RGB
     transformImage(&glsContext, *clDenoisedImage, clDenoisedImage, inverse(cam_to_ycbcr));

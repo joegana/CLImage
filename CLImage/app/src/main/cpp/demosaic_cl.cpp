@@ -250,22 +250,118 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
 
 void denoiseImage(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                  const DenoiseParameters& denoiseParameters, bool tight,
+                  const gls::Vector<3>& sigma, bool tight,
                   gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
     // Load the shader source
     const auto program = glsContext->loadProgram("demosaic");
 
     // Bind the kernel parameters
     auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
-                                    cl::Buffer,   // denoiseParameters
+                                    cl_float3,    // sigma
                                     cl::Image2D   // outputImage
                                     >(program, tight ? "denoiseImageTight" : "denoiseImageLoose");
 
-    // std::cout << "denoiseImage with parameters: " << denoiseParameters.lumaSigma << ", " << denoiseParameters.crSigma << ", " << denoiseParameters.cbSigma << std::endl;
-
-    cl::Buffer denoiseParametersBuffer(glsContext->clContext(), CL_MEM_USE_HOST_PTR, sizeof(DenoiseParameters), (void *) &denoiseParameters);
+    cl_float3 cl_sigma = { sigma[0], sigma[1], sigma[2] };
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImage.getImage2D(), denoiseParametersBuffer, outputImage->getImage2D());
+           inputImage.getImage2D(), cl_sigma, outputImage->getImage2D());
+}
+
+void denoiseImageGuided(gls::OpenCLContext* glsContext,
+                        const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                        const gls::Vector<3>& eps,
+                        gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
+                                    cl_float3,    // eps
+                                    cl::Image2D   // outputImage
+                                    >(program, "denoiseImageGuided");
+
+    cl_float3 cl_eps = { eps[0], eps[1], eps[2] };
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+           inputImage.getImage2D(), cl_eps, outputImage->getImage2D());
+}
+
+void bayerToRawRGBA(gls::OpenCLContext* glsContext,
+                    const gls::cl_image_2d<gls::luma_pixel_16>& rawImage,
+                    gls::cl_image_2d<gls::rgba_pixel_float>* rgbaImage,
+                    BayerPattern bayerPattern) {
+    assert(rawImage.width == 2 * rgbaImage->width && rawImage.height == 2 * rgbaImage->height);
+
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
+                                    cl::Image2D,  // rgbaImage
+                                    int           // bayerPattern
+                                    >(program, "bayerToRawRGBA");
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(rgbaImage->width, rgbaImage->height),
+           rawImage.getImage2D(), rgbaImage->getImage2D(), bayerPattern);
+}
+
+void rawRGBAToBayer(gls::OpenCLContext* glsContext,
+                    const gls::cl_image_2d<gls::rgba_pixel_float>& rgbaImage,
+                    gls::cl_image_2d<gls::luma_pixel_16>* rawImage,
+                    BayerPattern bayerPattern) {
+    assert(rawImage->width == 2 * rgbaImage.width && rawImage->height == 2 * rgbaImage.height);
+
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // rgbaImage
+                                    cl::Image2D,  // rawImage
+                                    int           // bayerPattern
+                                    >(program, "rawRGBAToBayer");
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(rgbaImage.width, rgbaImage.height),
+           rgbaImage.getImage2D(), rawImage->getImage2D(), bayerPattern);
+}
+
+void denoiseRawRGBAImage(gls::OpenCLContext* glsContext,
+                         const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                         const gls::Vector<4> rawSigma,
+                         gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
+                                    cl_float4,   // denoiseParameters
+                                    cl::Image2D   // outputImage
+                                    >(program, "denoiseRawRGBAImage");
+
+    // std::cout << "denoiseImage with parameters: " << denoiseParameters.lumaSigma << ", " << denoiseParameters.crSigma << ", " << denoiseParameters.cbSigma << std::endl;
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+           inputImage.getImage2D(), { rawSigma[0], rawSigma[1], rawSigma[2], rawSigma[3] }, outputImage->getImage2D());
+}
+
+void despeckleRawRGBAImage(gls::OpenCLContext* glsContext,
+                           const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                           gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
+                                    cl::Image2D   // outputImage
+                                    >(program, "despeckleRawRGBAImage");
+
+    // std::cout << "denoiseImage with parameters: " << denoiseParameters.lumaSigma << ", " << denoiseParameters.crSigma << ", " << denoiseParameters.cbSigma << std::endl;
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+           inputImage.getImage2D(), outputImage->getImage2D());
 }
