@@ -29,7 +29,7 @@
 #include "gls_image_png.h"
 #include "gls_image_tiff.h"
 
-// #define USE_FP16_FLOATS 1
+#define USE_FP16_FLOATS 1
 
 namespace gls {
 

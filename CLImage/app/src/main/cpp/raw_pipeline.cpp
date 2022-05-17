@@ -21,6 +21,8 @@
 #include "gls_logging.h"
 #include "gls_image.hpp"
 
+#include "raw_converter.hpp"
+
 #include "demosaic.hpp"
 #include "gls_tiff_metadata.hpp"
 
@@ -182,7 +184,7 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::
     demosaicParameters.noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso);
     demosaicParameters.denoiseParameters = IMX492DenoiseParameters(iso);
 
-    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
+    return demosaicImage(*inputImage, &demosaicParameters, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
 }
 
 gls::image<gls::rgb_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem::path& input_path, DemosaicParameters* demosaicParameters,
@@ -212,7 +214,7 @@ gls::image<gls::rgb_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem:
     // demosaicParameters->noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso);
     demosaicParameters->denoiseParameters = IMX492DenoiseParameters(iso);
 
-    return demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &rotated_gmb_position, rotate_180);
+    return demosaicImage(*inputImage, demosaicParameters, &rotated_gmb_position, rotate_180);
 }
 
 void calibrateIMX492(const std::filesystem::path& input_dir) {
@@ -370,7 +372,7 @@ std::array<DenoiseParameters, 5> LeicaQ2DenoiseParameters(int iso) {
     // A reasonable denoising calibration on a fairly large range of Noise Variance values
 
     const float min_green_variance = 5e-05;
-    const float max_green_variance = 5e-03;
+    const float max_green_variance = 1.6e-02;
     const float nlf_green_variance = std::clamp(nlf_params.first[1], min_green_variance, max_green_variance);
 
     const float nlf_alpha = log2(nlf_green_variance / min_green_variance) / log2(max_green_variance / min_green_variance);
@@ -379,28 +381,28 @@ std::array<DenoiseParameters, 5> LeicaQ2DenoiseParameters(int iso) {
 
     std::array<DenoiseParameters, 5> denoiseParameters = {{
         {
-            .luma = std::lerp(0.5f, 1.0f, iso_alpha),
-            .chroma = std::lerp(1.0f, 8.0f, iso_alpha),
+            .luma = std::lerp(0.5f, 2.0f, iso_alpha),
+            .chroma = std::lerp(1.0f, 16.0f, iso_alpha),
             .sharpening = std::lerp(1.2f, 0.7f, nlf_alpha)
         },
         {
+            .luma = std::lerp(0.75f, 4.0f, iso_alpha),
+            .chroma = std::lerp(0.75f, 8.0f, iso_alpha),
+            .sharpening = std::lerp(1.0f, 0.8f, nlf_alpha)
+        },
+        {
             .luma = std::lerp(0.75f, 2.0f, iso_alpha),
-            .chroma = std::lerp(0.75f, 4.0f, iso_alpha),
+            .chroma = std::lerp(0.75f, 8.0f, iso_alpha),
             .sharpening = 1
         },
         {
-            .luma = std::lerp(0.75f, 1.0f, iso_alpha),
-            .chroma = std::lerp(0.75f, 2.0f, iso_alpha),
+            .luma = std::lerp(0.25f, 1.0f, iso_alpha),
+            .chroma = std::lerp(0.25f, 8.0f, iso_alpha),
             .sharpening = 1
         },
         {
-            .luma = std::lerp(0.25f, 0.5f, iso_alpha),
-            .chroma = std::lerp(0.25f, 1.0f, iso_alpha),
-            .sharpening = 1
-        },
-        {
-            .luma = std::lerp(0.125f, 0.25f, iso_alpha),
-            .chroma = std::lerp(0.125f, 1.0f, iso_alpha),
+            .luma = std::lerp(0.125f, 0.5f, iso_alpha),
+            .chroma = std::lerp(0.125f, 8.0f, iso_alpha),
             .sharpening = 1
         }
     }};
@@ -408,7 +410,9 @@ std::array<DenoiseParameters, 5> LeicaQ2DenoiseParameters(int iso) {
     return denoiseParameters;
 }
 
-gls::image<gls::rgb_pixel>::unique_ptr calibrateLeicaQ2(const std::filesystem::path& input_path, DemosaicParameters* demosaicParameters,
+gls::image<gls::rgb_pixel>::unique_ptr calibrateLeicaQ2(RawConverter* rawConverter,
+                                                        const std::filesystem::path& input_path,
+                                                        DemosaicParameters* demosaicParameters,
                                                         int iso, const gls::rectangle& gmb_position) {
     gls::tiff_metadata dng_metadata, exif_metadata;
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
@@ -423,10 +427,10 @@ gls::image<gls::rgb_pixel>::unique_ptr calibrateLeicaQ2(const std::filesystem::p
 
     demosaicParameters->denoiseParameters = LeicaQ2DenoiseParameters(iso);
 
-    return demosaicImage(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, /*rotate_180=*/ false);
+    return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, demosaicParameters, &gmb_position, /*rotate_180=*/ false));
 }
 
-void calibrateLeicaQ2(const std::filesystem::path& input_dir) {
+void calibrateLeicaQ2(RawConverter* rawConverter, const std::filesystem::path& input_dir) {
     struct CalibrationEntry {
         int iso;
         const char* fileName;
@@ -461,8 +465,8 @@ void calibrateLeicaQ2(const std::filesystem::path& input_dir) {
             }
         };
 
-        const auto rgb_image = calibrateLeicaQ2(input_path, &demosaicParameters, entry.iso, entry.gmb_position);
-        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_cal_epsnr_rgb.png", /*skip_alpha=*/ true);
+        const auto rgb_image = calibrateLeicaQ2(rawConverter, input_path, &demosaicParameters, entry.iso, entry.gmb_position);
+        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_cal_rawnr_rgb.png", /*skip_alpha=*/ true);
 
         noiseModel[i] = demosaicParameters.noiseModel;
     }
@@ -557,10 +561,10 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicAdobeDNG(const std::filesystem::p
 //    auto output_file = (input_path.parent_path() / input_path.stem()).string() + "_my.dng";
 //    saveStrippedDNG(output_file, *inputImage, dng_metadata, exif_metadata);
 
-    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr /* &gmb_position */, rotate_180);
+    return demosaicImage(*inputImage, &demosaicParameters, nullptr /* &gmb_position */, rotate_180);
 }
 
-gls::image<gls::rgb_pixel>::unique_ptr demosaicLeicaQ2DNG(const std::filesystem::path& input_path) {
+gls::image<gls::rgb_pixel>::unique_ptr demosaicLeicaQ2DNG(RawConverter* rawConverter, const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
         .rgbConversionParameters = {
             .contrast = 1.05,
@@ -583,7 +587,7 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicLeicaQ2DNG(const std::filesystem:
     demosaicParameters.noiseModel.pyramidNlf = nlfParams.second;
     demosaicParameters.denoiseParameters = LeicaQ2DenoiseParameters(iso);
 
-    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr /* &gmb_position */, /*rotate_180=*/ false);
+    return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, &demosaicParameters, nullptr /* &gmb_position */, /*rotate_180=*/ false));
 }
 
 
@@ -606,7 +610,7 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492V2DNG(const std::filesystem
 
     unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr, false);
 
-    return demosaicImage(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr, false);
+    return demosaicImage(*inputImage, &demosaicParameters, nullptr, false);
 }
 
 int main(int argc, const char* argv[]) {
@@ -656,12 +660,15 @@ int main(int argc, const char* argv[]) {
 //
 //        const auto rgb_image = calibrateIMX492DNG(input_path, &demosaicParameters, /*iso=*/ 100, rotated_gmb_position, rotate_180);
 
+        gls::OpenCLContext glsContext("");
+        RawConverter rawConverter(&glsContext);
+
         // calibrateIMX492(input_path.parent_path());
-        calibrateLeicaQ2(input_path.parent_path());
+        // calibrateLeicaQ2(&rawConverter, input_path.parent_path());
 
         LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
 
-        const auto rgb_image = demosaicLeicaQ2DNG(input_path);
+        const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
         rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
     }
 }

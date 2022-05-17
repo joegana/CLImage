@@ -118,6 +118,8 @@ add_executable(
         demosaic_cpu.cpp
         demosaic_utils.cpp
         guided_filter.cpp
+        pyramidal_denoise.cpp
+        raw_converter.cpp
         ThreadPool.cpp
         raw_pipeline.cpp
         filesystem/operations.cpp

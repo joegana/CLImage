@@ -87,7 +87,7 @@ class cl_image_2d : public cl_image<T> {
                              image<T>::pixel_size * image<T>::width, 0, other->pixels().data());
     }
 
-    virtual image<T> mapImage() {
+    virtual image<T> mapImage() const {
         size_t row_pitch;
         size_t slice_pitch;
         cl::CommandQueue queue = cl::CommandQueue::getDefault();
@@ -101,7 +101,7 @@ class cl_image_2d : public cl_image<T> {
         return gls::image(image<T>::width, image<T>::height, (int) stride, std::span<T>(image_data, data_size));
     }
 
-    void unmapImage(const image<T>& mappedImage) { cl::enqueueUnmapMemObject(_payload->image, (void*)mappedImage[0]); }
+    void unmapImage(const image<T>& mappedImage) const { cl::enqueueUnmapMemObject(_payload->image, (void*)mappedImage[0]); }
 
     cl::Image2D getImage2D() const { return _payload->image; }
 };

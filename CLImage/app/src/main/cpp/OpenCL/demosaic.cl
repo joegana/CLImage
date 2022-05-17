@@ -50,7 +50,8 @@ constant const int2 bayerOffsets[4][4] = {
 
 // Work on one Quad (2x2) at a time
 kernel void scaleRawData(read_only image2d_t rawImage, write_only image2d_t scaledRawImage,
-                         int bayerPattern, constant float scaleMul[4], float blackLevel) {
+                         int bayerPattern, float4 vScaleMul, float blackLevel) {
+    float *scaleMul = (float *) &vScaleMul;
     const int2 imageCoordinates = (int2) (2 * get_global_id(0), 2 * get_global_id(1));
     for (int c = 0; c < 4; c++) {
         int2 o = bayerOffsets[bayerPattern][c];
@@ -357,10 +358,14 @@ kernel void medianFilterImage(read_only image2d_t inputImage, write_only image2d
 
 /// ---- Image Denoising ----
 
-kernel void transformImage(read_only image2d_t inputImage, write_only image2d_t outputImage, constant float3 matrix[3]) {
+typedef struct {
+    float3 m[3];
+} Matrix3x3;
+
+kernel void transformImage(read_only image2d_t inputImage, write_only image2d_t outputImage, Matrix3x3 transform) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
     float3 inputValue = read_imagef(inputImage, imageCoordinates).xyz;
-    float3 outputPixel = (float3) (dot(matrix[0], inputValue), dot(matrix[1], inputValue), dot(matrix[2], inputValue));
+    float3 outputPixel = (float3) (dot(transform.m[0], inputValue), dot(transform.m[1], inputValue), dot(transform.m[2], inputValue));
     write_imagef(outputImage, imageCoordinates, (float4) (outputPixel, 0.0));
 }
 
@@ -687,19 +692,19 @@ typedef struct RGBConversionParameters {
 } RGBConversionParameters;
 
 kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t rgbImage,
-                          constant float3 transform[3], constant RGBConversionParameters *rgbConversionParameters) {
+                          Matrix3x3 transform, RGBConversionParameters rgbConversionParameters) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
     float3 pixel_value = read_imagef(linearImage, imageCoordinates).xyz;
 
-    // pixel_value = saturationBoost(pixel_value, rgbConversionParameters->saturation);
-    pixel_value = contrastBoost(pixel_value, rgbConversionParameters->contrast);
+    // pixel_value = saturationBoost(pixel_value, rgbConversionParameters.saturation);
+    pixel_value = contrastBoost(pixel_value, rgbConversionParameters.contrast);
 
-    float3 rgb = (float3) (dot(transform[0], pixel_value),
-                           dot(transform[1], pixel_value),
-                           dot(transform[2], pixel_value));
+    float3 rgb = (float3) (dot(transform.m[0], pixel_value),
+                           dot(transform.m[1], pixel_value),
+                           dot(transform.m[2], pixel_value));
 
-    write_imagef(rgbImage, imageCoordinates, (float4) (toneCurve(clamp(rgb, 0.0, 1.0), rgbConversionParameters->toneCurveSlope), 0.0));
+    write_imagef(rgbImage, imageCoordinates, (float4) (toneCurve(clamp(rgb, 0.0, 1.0), rgbConversionParameters.toneCurveSlope), 0.0));
 }
 
 kernel void resample(read_only image2d_t inputImage, write_only image2d_t outputImage, sampler_t linear_sampler) {

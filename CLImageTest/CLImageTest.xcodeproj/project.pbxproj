@@ -12,6 +12,8 @@
 		E50D252D282DB505003305E9 /* demosaic_cl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D2528282DB504003305E9 /* demosaic_cl.cpp */; };
 		E50D2533282DB5BB003305E9 /* ThreadPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D2531282DB5BB003305E9 /* ThreadPool.cpp */; };
 		E50D2536282ED766003305E9 /* guided_filter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D2534282ED766003305E9 /* guided_filter.cpp */; };
+		E50D25392832D41F003305E9 /* raw_converter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D25372832D41F003305E9 /* raw_converter.cpp */; };
+		E50D253B2832E414003305E9 /* pyramidal_denoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E50D253A2832E414003305E9 /* pyramidal_denoise.cpp */; };
 		E5188C6C27EA63A700F2332C /* gls_image_jpeg.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E5AD6275276174FC0055F712 /* gls_image_jpeg.cpp */; };
 		E5188C6D27EA63A700F2332C /* gls_cl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E5AD6276276174FC0055F712 /* gls_cl.cpp */; };
 		E5188C6E27EA63A700F2332C /* gls_image_tiff.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E51AACE527E1548400E99B58 /* gls_image_tiff.cpp */; };
@@ -82,6 +84,9 @@
 		E50D2532282DB5BB003305E9 /* pyramidal_denoise.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = pyramidal_denoise.hpp; path = ../../CLImage/app/src/main/cpp/pyramidal_denoise.hpp; sourceTree = "<group>"; };
 		E50D2534282ED766003305E9 /* guided_filter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = guided_filter.cpp; path = ../../CLImage/app/src/main/cpp/guided_filter.cpp; sourceTree = "<group>"; };
 		E50D2535282ED766003305E9 /* guided_filter.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = guided_filter.hpp; path = ../../CLImage/app/src/main/cpp/guided_filter.hpp; sourceTree = "<group>"; };
+		E50D25372832D41F003305E9 /* raw_converter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = raw_converter.cpp; path = ../../CLImage/app/src/main/cpp/raw_converter.cpp; sourceTree = "<group>"; };
+		E50D25382832D41F003305E9 /* raw_converter.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; name = raw_converter.hpp; path = ../../CLImage/app/src/main/cpp/raw_converter.hpp; sourceTree = "<group>"; };
+		E50D253A2832E414003305E9 /* pyramidal_denoise.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = pyramidal_denoise.cpp; path = ../../CLImage/app/src/main/cpp/pyramidal_denoise.cpp; sourceTree = "<group>"; };
 		E5188C7F27EA63A700F2332C /* RawPipeline */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = RawPipeline; sourceTree = BUILT_PRODUCTS_DIR; };
 		E51AACE427DFEDFD00E99B58 /* CLImageTest.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CLImageTest.entitlements; sourceTree = "<group>"; };
 		E51AACE527E1548400E99B58 /* gls_image_tiff.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = gls_image_tiff.cpp; path = ../../src/gls_image_tiff.cpp; sourceTree = "<group>"; };
@@ -163,6 +168,9 @@
 				E5AB798427EAD0D7008B3D30 /* main.cpp */,
 				E5AB797F27EAD0D7008B3D30 /* raw_pipeline.cpp */,
 				E50D2532282DB5BB003305E9 /* pyramidal_denoise.hpp */,
+				E50D253A2832E414003305E9 /* pyramidal_denoise.cpp */,
+				E50D25372832D41F003305E9 /* raw_converter.cpp */,
+				E50D25382832D41F003305E9 /* raw_converter.hpp */,
 				E50D2531282DB5BB003305E9 /* ThreadPool.cpp */,
 				E50D2530282DB5BB003305E9 /* ThreadPool.hpp */,
 				E50D2534282ED766003305E9 /* guided_filter.cpp */,
@@ -362,6 +370,7 @@
 				E5AB79A627F21A44008B3D30 /* gls_color_science.cpp in Sources */,
 				E50D2536282ED766003305E9 /* guided_filter.cpp in Sources */,
 				E50D252D282DB505003305E9 /* demosaic_cl.cpp in Sources */,
+				E50D25392832D41F003305E9 /* raw_converter.cpp in Sources */,
 				E5AB799C27ED59C0008B3D30 /* gls_tiff_metadata.cpp in Sources */,
 				E5AB798827EAD0D7008B3D30 /* demosaic.cpp in Sources */,
 				E50D2533282DB5BB003305E9 /* ThreadPool.cpp in Sources */,
@@ -371,6 +380,7 @@
 				E5AB798627EAD0D7008B3D30 /* raw_pipeline.cpp in Sources */,
 				E50D252C282DB505003305E9 /* demosaic_cpu.cpp in Sources */,
 				E5AB79A227F159A7008B3D30 /* gls_dng_lossless_jpeg.cpp in Sources */,
+				E50D253B2832E414003305E9 /* pyramidal_denoise.cpp in Sources */,
 				E5188C7227EA63A700F2332C /* gls_cl_error.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -34,15 +34,13 @@ void scaleRawData(gls::OpenCLContext* glsContext,
     auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
                                     cl::Image2D,  // scaledRawImage
                                     int,          // bayerPattern
-                                    cl::Buffer,   // scaleMul
+                                    cl_float4,    // scaleMul
                                     float         // blackLevel
                                     >(program, "scaleRawData");
 
-    cl::Buffer scaleMulBuffer(scaleMul.begin(), scaleMul.end(), true);
-
     // Work on one Quad (2x2) at a time
     kernel(gls::OpenCLContext::buildEnqueueArgs(scaledRawImage->width/2, scaledRawImage->height/2),
-           rawImage.getImage2D(), scaledRawImage->getImage2D(), bayerPattern, scaleMulBuffer, blackLevel);
+           rawImage.getImage2D(), scaledRawImage->getImage2D(), bayerPattern, {scaleMul[0], scaleMul[1], scaleMul[2], scaleMul[3]}, blackLevel);
 }
 
 void interpolateGreen(gls::OpenCLContext* glsContext,
@@ -193,24 +191,23 @@ void transformImage(gls::OpenCLContext* glsContext,
     // Load the shader source
     const auto program = glsContext->loadProgram("demosaic");
 
+    struct Matrix3x3 {
+        cl_float3 m[3];
+    } clTransform = {{
+        { transform[0][0], transform[0][1], transform[0][2] },
+        { transform[1][0], transform[1][1], transform[1][2] },
+        { transform[2][0], transform[2][1], transform[2][2] }
+    }};
+
     // Bind the kernel parameters
     auto kernel = cl::KernelFunctor<cl::Image2D,  // linearImage
                                     cl::Image2D,  // rgbImage
-                                    cl::Buffer    // transform
+                                    Matrix3x3     // transform
                                     >(program, "transformImage");
-
-    // parameter "constant float3 transform[3]". NOTE: float3 are mapped in memory as float4
-    gls::Matrix<3, 4> paddedTransform;
-    for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 3; c++) {
-            paddedTransform[r][c] = transform[r][c];
-        }
-    }
-    cl::Buffer transformBuffer(paddedTransform.begin(), paddedTransform.end(), true);
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
-           linearImage.getImage2D(), rgbImage->getImage2D(), transformBuffer);
+           linearImage.getImage2D(), rgbImage->getImage2D(), clTransform);
 }
 
 void convertTosRGB(gls::OpenCLContext* glsContext,
@@ -220,29 +217,24 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
     // Load the shader source
     const auto program = glsContext->loadProgram("demosaic");
 
+    struct Matrix3x3 {
+        cl_float3 m[3];
+    } clTransform = {{
+        { transform[0][0], transform[0][1], transform[0][2] },
+        { transform[1][0], transform[1][1], transform[1][2] },
+        { transform[2][0], transform[2][1], transform[2][2] }
+    }};
+
     // Bind the kernel parameters
     auto kernel = cl::KernelFunctor<cl::Image2D,  // linearImage
                                     cl::Image2D,  // rgbImage
-                                    cl::Buffer,   // transform
-                                    cl::Buffer    // demosaicParameters
+                                    Matrix3x3,    // transform
+                                    RGBConversionParameters    // demosaicParameters
                                     >(program, "convertTosRGB");
-
-    // parameter "constant float3 transform[3]". NOTE: float3 are mapped in memory as float4
-    gls::Matrix<3, 4> paddedTransform;
-    for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 3; c++) {
-            paddedTransform[r][c] = transform[r][c];
-        }
-    }
-    cl::Buffer transformBuffer(paddedTransform.begin(), paddedTransform.end(), true);
-
-    // parameter "constant DemosaicParameters *demosaicParameters".
-    cl::Buffer demosaicParametersBuffer(glsContext->clContext(), CL_MEM_USE_HOST_PTR, sizeof(RGBConversionParameters),
-                                        (void *) &demosaicParameters.rgbConversionParameters);
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
-           linearImage.getImage2D(), rgbImage->getImage2D(), transformBuffer, demosaicParametersBuffer);
+           linearImage.getImage2D(), rgbImage->getImage2D(), clTransform, demosaicParameters.rgbConversionParameters);
 }
 
 // --- Multiscale Noise Reduction ---
