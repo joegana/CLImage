@@ -8844,12 +8844,12 @@ typedef CL_API_ENTRY cl_int (CL_API_CALL *PFN_clEnqueueReleaseD3D10ObjectsKHR)(
 
     cl_int flush() const
     {
-        return detail::errHandler(::clFlush(object_), __FLUSH_ERR);
+        return detail::errHandler(CL_WRAPPER_NS::clFlush(object_), __FLUSH_ERR);
     }
 
     cl_int finish() const
     {
-        return detail::errHandler(::clFinish(object_), __FINISH_ERR);
+        return detail::errHandler(CL_WRAPPER_NS::clFinish(object_), __FINISH_ERR);
     }
 }; // CommandQueue
 

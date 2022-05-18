@@ -27,6 +27,8 @@ enum BayerPattern {
     bggr = 3
 };
 
+extern const char* BayerPatternName[4];
+
 typedef struct DenoiseParameters {
     float luma;
     float chroma;
@@ -136,7 +138,7 @@ gls::Matrix<levels, 3> nlfFromIso(const std::array<NoiseModel, 6>& NLFData, int 
 
 template <int levels>
 std::pair<gls::Vector<4>, gls::Matrix<levels, 3>> nlfFromIso(const std::array<NoiseModel, 10>& NLFData, int iso) {
-    iso = std::clamp(iso, 100, 3200);
+    iso = std::clamp(iso, 100, 50000);
     if (iso >= 100 && iso < 200) {
         float a = (iso - 100) / 100;
         return std::pair(lerpRawNLF(NLFData[0].rawNlf, NLFData[1].rawNlf, a), lerpNLF<levels>(NLFData[0].pyramidNlf, NLFData[1].pyramidNlf, a));
@@ -190,10 +192,10 @@ void colorcheck(const gls::image<gls::luma_pixel_16>& rawImage, BayerPattern bay
 
 void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);
 
-void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
-                       gls::tiff_metadata* dng_metadata,
-                       DemosaicParameters* demosaicParameters,
-                       bool auto_white_balance, const gls::rectangle* gmb_position, bool rotate_180);
+float unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
+                        gls::tiff_metadata* dng_metadata,
+                        DemosaicParameters* demosaicParameters,
+                        bool auto_white_balance, const gls::rectangle* gmb_position, bool rotate_180);
 
 gls::Matrix<3, 3> cam_ycbcr(const gls::Matrix<3, 3>& rgb_cam);
 

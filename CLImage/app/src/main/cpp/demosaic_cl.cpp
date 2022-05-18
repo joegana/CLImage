@@ -253,7 +253,7 @@ void denoiseImage(gls::OpenCLContext* glsContext,
                                     cl::Image2D   // outputImage
                                     >(program, tight ? "denoiseImageTight" : "denoiseImageLoose");
 
-    cl_float3 cl_sigma = { sigma[0], sigma[1], sigma[2] };
+    cl_float3 cl_sigma = { sqrt(sigma[0]), sqrt(sigma[1]), sqrt(sigma[2]) };
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),

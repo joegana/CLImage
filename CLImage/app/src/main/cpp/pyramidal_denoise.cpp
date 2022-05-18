@@ -66,7 +66,11 @@ PyramidalDenoise<levels>::PyramidalDenoise(gls::OpenCLContext* glsContext, int w
                 denoiser[i] = std::make_unique<BilateralDenoiser>(glsContext, width/scale, height/scale);
                 break;
             case GuidedFast:
-                denoiser[i] = std::make_unique<GuidedFastDenoiser>(glsContext, width/scale, height/scale);
+                if (i > 1) {
+                    denoiser[i] = std::make_unique<BilateralDenoiser>(glsContext, width/scale, height/scale);
+                } else {
+                    denoiser[i] = std::make_unique<GuidedFastDenoiser>(glsContext, width/scale, height/scale);
+                }
                 break;
             case GuidedPrecise:
                 denoiser[i] = std::make_unique<GuidedPreciseDenoiser>(glsContext, width/scale, height/scale);

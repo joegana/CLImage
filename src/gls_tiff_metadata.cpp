@@ -374,6 +374,7 @@ static const TIFFFieldInfo xtiffFieldInfo[] = {
     { TIFFTAG_PROFILEHUESATMAPDATA2, -1, -1, TIFF_FLOAT, FIELD_CUSTOM, 1, 1, "ProfileHueSatMapData2" },
 
     { TIFFTAG_NOISEPROFILE, 2, 2, TIFF_FLOAT, FIELD_CUSTOM, 1, 0, "NoiseProfile" },
+    { TIFFTAG_NOISEREDUCTIONAPPLIED, 1, 1, TIFF_RATIONAL, FIELD_CUSTOM, 1, 0, "NoiseReductionApplied" },
 
     { TIFFTAG_IMAGENUMBER, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, "ImageNumber" },
  };

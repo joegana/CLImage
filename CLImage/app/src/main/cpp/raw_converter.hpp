@@ -16,9 +16,9 @@ class RawConverter {
 
     // RawConverter base work textures
     gls::cl_image_2d<gls::luma_pixel_16>::unique_ptr clRawImage;
+    gls::cl_image_2d<gls::luma_pixel_float>::unique_ptr clScaledRawImage;
     gls::cl_image_2d<gls::luma_pixel_float>::unique_ptr clGreenImage;
     gls::cl_image_2d<gls::rgba_pixel_float>::unique_ptr clLinearRGBImage;
-    gls::cl_image_2d<gls::luma_pixel_float>::unique_ptr clScaledRawImage;
     gls::cl_image_2d<gls::rgba_pixel>::unique_ptr clsRGBImage;
 
     std::unique_ptr<PyramidalDenoise<5>> pyramidalDenoise;

@@ -46,9 +46,19 @@ template <typename T>
 std::vector<T> getVector(const gls::tiff_metadata& metadata, ttag_t key) {
     const auto& entry = metadata.find(key);
     if (entry != metadata.end()) {
-        return std::get<std::vector<T>>(metadata.find(key)->second);
+        return std::get<std::vector<T>>(entry->second);
     }
     return std::vector<T>();
+}
+
+template <typename T>
+bool getValue(const gls::tiff_metadata& metadata, ttag_t key, T* value) {
+    const auto& entry = metadata.find(key);
+    if (entry != metadata.end()) {
+        *value = std::get<T>(entry->second);
+        return true;
+    }
+    return false;
 }
 
 // DNG Extension Tags
@@ -92,6 +102,7 @@ std::vector<T> getVector(const gls::tiff_metadata& metadata, ttag_t key) {
 #define TIFFTAG_OPCODELIST3 51022
 
 #define TIFFTAG_NOISEPROFILE 51041
+#define TIFFTAG_NOISEREDUCTIONAPPLIED 50935
 
 #define TIFFTAG_IMAGENUMBER 37393
 

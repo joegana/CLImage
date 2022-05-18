@@ -25,8 +25,8 @@ enum { raw_red = 0, raw_green = 1, raw_blue = 2, raw_green2 = 3 };
 constant const int2 bayerOffsets[4][4] = {
     { {1, 0}, {0, 0}, {0, 1}, {1, 1} }, // grbg
     { {0, 1}, {0, 0}, {1, 0}, {1, 1} }, // gbrg
-    { {0, 0}, {1, 0}, {1, 1}, {0, 1} }, // rggb
-    { {1, 1}, {1, 0}, {0, 0}, {0, 1} }  // bggr
+    { {0, 0}, {0, 1}, {1, 1}, {1, 0} }, // rggb
+    { {1, 1}, {0, 1}, {0, 0}, {1, 0} }  // bggr
 };
 
 #if defined(__QCOMM_QGPU_A3X__) || \

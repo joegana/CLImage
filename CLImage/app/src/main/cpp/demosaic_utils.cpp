@@ -277,11 +277,11 @@ void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3
     *wb_mul = *wb_mul / (*wb_mul)[1];
 }
 
-void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
-                       gls::tiff_metadata* dng_metadata,
-                       DemosaicParameters* demosaicParameters,
-                       bool auto_white_balance,
-                       const gls::rectangle* gmb_position, bool rotate_180) {
+float unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
+                        gls::tiff_metadata* dng_metadata,
+                        DemosaicParameters* demosaicParameters,
+                        bool auto_white_balance,
+                        const gls::rectangle* gmb_position, bool rotate_180) {
     const auto color_matrix1 = getVector<float>(*dng_metadata, TIFFTAG_COLORMATRIX1);
     const auto color_matrix2 = getVector<float>(*dng_metadata, TIFFTAG_COLORMATRIX2);
 
@@ -290,6 +290,11 @@ void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
 
     auto as_shot_neutral = getVector<float>(*dng_metadata, TIFFTAG_ASSHOTNEUTRAL);
     std::cout << "as_shot_neutral: " << gls::Vector<3>(as_shot_neutral) << std::endl;
+
+    float baseline_exposure = 0;
+    getValue(*dng_metadata, TIFFTAG_BASELINEEXPOSURE, &baseline_exposure);
+    float exposure_multiplier = pow(2.0, baseline_exposure);
+    std::cout << "baseline_exposure: " << baseline_exposure  << ", exposure_multiplier: " << exposure_multiplier << std::endl;
 
     const auto black_level_vec = getVector<float>(*dng_metadata, TIFFTAG_BLACKLEVEL);
     const auto white_level_vec = getVector<uint32_t>(*dng_metadata, TIFFTAG_WHITELEVEL);
@@ -303,7 +308,7 @@ void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
                                      : std::memcmp(cfa_pattern.data(), "\01\00\02\01", 4) == 0 ? BayerPattern::grbg
                                      : BayerPattern::gbrg;
 
-    std::cout << "bayerPattern: " << demosaicParameters->bayerPattern << std::endl;
+    std::cout << "bayerPattern: " << BayerPatternName[demosaicParameters->bayerPattern] << std::endl;
 
     gls::Vector<3> pre_mul;
     gls::Matrix<3, 3> cam_xyz;
@@ -331,9 +336,6 @@ void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
     std::cout << "*** pre_mul: " << pre_mul / pre_mul[1] << std::endl;
 
     if (auto_white_balance) {
-//        gls::Vector<3> cam_mul;
-//        white_balance(rawImage, &cam_mul, demosaicParameters->white_level, demosaicParameters->black_level, demosaicParameters->bayerPattern);
-
         auto cam_to_ycbcr = cam_ycbcr(demosaicParameters->rgb_cam);
         gls::Vector<3> cam_mul = autoWhiteBalance(rawImage, cam_to_ycbcr,
                                                   demosaicParameters->white_level, demosaicParameters->black_level, demosaicParameters->bayerPattern);
@@ -352,40 +354,15 @@ void unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
         pre_mul = cam_mul;
     }
 
-//    // Save the whitening transformation
-//    const auto inv_cam_white = pre_mul;
-//
-//    gls::Matrix<3, 3> mCamMul = {
-//        { pre_mul[0] / cam_mul[0], 0, 0 },
-//        { 0, pre_mul[1] / cam_mul[1], 0 },
-//        { 0, 0, pre_mul[2] / cam_mul[2] }
-//    };
-//    {
-//        const gls::Vector<3> d65_white = { 0.95047, 1.0, 1.08883 };
-//        const gls::Vector<3> d50_white = { 0.9642, 1.0000, 0.8249 };
-//
-//        std::cout << "XYZ D65 White -> sRGB: " << rgb_xyz * d65_white << std::endl;
-//        std::cout << "sRGB White -> XYZ D65: " << xyz_rgb * gls::Vector({1, 1, 1}) << std::endl;
-//        std::cout << "inverse(cam_xyz) * (1 / pre_mul): " << inverse(cam_xyz) * (1 / pre_mul) << std::endl;
-//
-//        auto cam_white = inverse(cam_xyz) * xyz_rgb * gls::Vector<3>({ 1, 1, 1 });
-//        std::cout << "inverse(cam_xyz) * cam_white: " << cam_xyz * cam_white << ", CCT: " << XYZtoCorColorTemp(cam_xyz * cam_white) << std::endl;
-//        std::cout << "xyz_rgb * gls::Vector<3>({ 1, 1, 1 }): " << xyz_rgb * gls::Vector<3>({ 1, 1, 1 }) << ", CCT: " << XYZtoCorColorTemp(xyz_rgb * gls::Vector<3>({ 1, 1, 1 })) << std::endl;
-//
-//        const auto wb_out = xyz_rgb * demosaicParameters->rgb_cam * mCamMul * gls::Vector({1, 1, 1});
-//        std::cout << "wb_out: " << wb_out << ", CCT: " << XYZtoCorColorTemp(wb_out) << std::endl;
-//
-//        const auto no_wb_out = xyz_rgb * demosaicParameters->rgb_cam * (1 / inv_cam_white);
-//        std::cout << "no_wb_out: " << wb_out << ", CCT: " << XYZtoCorColorTemp(no_wb_out) << std::endl;
-//    }
-
     // Scale Input Image
     auto minmax = std::minmax_element(std::begin(pre_mul), std::end(pre_mul));
     for (int c = 0; c < 4; c++) {
         int pre_mul_idx = c == 3 ? 1 : c;
-        (demosaicParameters->scale_mul)[c] = (pre_mul[pre_mul_idx] / *minmax.first) * 65535.0 / (demosaicParameters->white_level - demosaicParameters->black_level);
+        (demosaicParameters->scale_mul)[c] = exposure_multiplier * (pre_mul[pre_mul_idx] / *minmax.first) * 65535.0 / (demosaicParameters->white_level - demosaicParameters->black_level);
     }
     printf("scale_mul: %f, %f, %f, %f\n", (demosaicParameters->scale_mul)[0], (demosaicParameters->scale_mul)[1], (demosaicParameters->scale_mul)[2], (demosaicParameters->scale_mul)[3]);
+
+    return exposure_multiplier;
 }
 
 const char* GMBColorNames[24] {
@@ -424,6 +401,9 @@ enum { red = 0, green = 1, blue = 2, green2 = 3 };
 // Collect mean and variance of ColorChecker patches
 void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float black_level, float white_level, BayerPattern bayerPattern, const gls::rectangle& gmb_position, bool rotate_180, std::array<RawPatchStats, 24>* stats) {
     gls::image<gls::luma_pixel_16> green_channel(rawImage.width/2, rawImage.height/2);
+    for (int i = 0; i < green_channel.pixels().size(); i++) {
+        green_channel.pixels()[i].luma = 0;
+    }
 
 //    gls::image<gls::luma_pixel_16>* zapMama = (gls::image<gls::luma_pixel_16> *) &rawImage;
 
@@ -500,10 +480,10 @@ void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float 
                     varB += square(p[2] - avgB);
                     varG2 += square(p[3] - avgG2);
 
-//                    (*zapMama)[y_off + r.y][x_off + r.x] = 0;
-//                    (*zapMama)[y_off + g.y][x_off + g.x] = 0;
-//                    (*zapMama)[y_off + b.y][x_off + b.x] = 0;
-//                    (*zapMama)[y_off + g2.y][x_off + g2.x] = 0;
+//                    (*zapMama)[y_off + r.y][x_off + r.x] = 0.0f;
+//                    (*zapMama)[y_off + g.y][x_off + g.x] = 0.0f;
+//                    (*zapMama)[y_off + b.y][x_off + b.x] = 0.0f;
+//                    (*zapMama)[y_off + g2.y][x_off + g2.x] = 0.0f;
                 }
             }
 
@@ -527,7 +507,9 @@ void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float 
 //
 //    }
 
-    green_channel.write_png_file("/Users/fabio/green_channel.png", false);
+    static int file_count = 0;
+
+    green_channel.write_png_file("/Users/fabio/green_channel" + std::to_string(file_count++) + ".png", false);
 }
 
 // Collect mean and variance of ColorChecker patches

@@ -11,6 +11,8 @@
 
 static const char* TAG = "RAW Converter";
 
+// #define PRINT_EXECUTION_TIME true
+
 void RawConverter::allocateTextures(gls::OpenCLContext* glsContext, int width, int height) {
     auto clContext = glsContext->clContext();
 
@@ -69,6 +71,9 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
         allocateHighNoiseTextures(_glsContext, rawImage.width, rawImage.height);
     }
 
+#ifdef PRINT_EXECUTION_TIME
+    auto t_start = std::chrono::high_resolution_clock::now();
+#endif
     // Copy input data to the OpenCL input buffer
     auto cpuRawImage = clRawImage->mapImage();
     for (int y = 0; y < clRawImage->height; y++) {
@@ -78,7 +83,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     // --- Image Demosaicing ---
 
-    if (nlf_alpha > 0.6) {
+    if (high_noise_image) {
         std::cout << "denoiseRawRGBAImage" << std::endl;
 
         bayerToRawRGBA(_glsContext, *clRawImage, rgbaRawImage.get(), demosaicParameters->bayerPattern);
@@ -87,12 +92,12 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
                               *rgbaRawImage,
                               denoisedRgbaRawImage.get());
 
-        denoiseRawRGBAImage(_glsContext,
-                            *denoisedRgbaRawImage,
-                            demosaicParameters->noiseModel.rawNlf,
-                            rgbaRawImage.get());
+//        denoiseRawRGBAImage(_glsContext,
+//                            *denoisedRgbaRawImage,
+//                            demosaicParameters->noiseModel.rawNlf,
+//                            rgbaRawImage.get());
 
-        rawRGBAToBayer(_glsContext, *rgbaRawImage, clRawImage.get(), demosaicParameters->bayerPattern);
+        rawRGBAToBayer(_glsContext, *denoisedRgbaRawImage, clRawImage.get(), demosaicParameters->bayerPattern);
     }
 
     scaleRawData(_glsContext, *clRawImage, clScaledRawImage.get(), demosaicParameters->bayerPattern, demosaicParameters->scale_mul,
@@ -100,9 +105,11 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     const float raw_sigma_treshold = 4; // nlf_alpha > 0.5 ? 32 : nlf_alpha > 0.3 ? 8 : 4;
 
-    interpolateGreen(_glsContext, *clScaledRawImage, clGreenImage.get(), demosaicParameters->bayerPattern, raw_sigma_treshold * sqrt(noiseModel->rawNlf[1]));
+    interpolateGreen(_glsContext, *clScaledRawImage, clGreenImage.get(), demosaicParameters->bayerPattern,
+                     raw_sigma_treshold * sqrt(noiseModel->rawNlf[1]));
 
-    interpolateRedBlue(_glsContext, *clScaledRawImage, *clGreenImage, clLinearRGBImage.get(), demosaicParameters->bayerPattern, raw_sigma_treshold * sqrt((noiseModel->rawNlf[0] + noiseModel->rawNlf[2]) / 2), rotate_180);
+    interpolateRedBlue(_glsContext, *clScaledRawImage, *clGreenImage, clLinearRGBImage.get(), demosaicParameters->bayerPattern,
+                       raw_sigma_treshold * sqrt((noiseModel->rawNlf[0] + noiseModel->rawNlf[2]) / 2), rotate_180);
 
     // --- Image Denoising ---
 
@@ -113,13 +120,13 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     transformImage(_glsContext, *clLinearRGBImage, clLinearRGBImage.get(), cam_to_ycbcr);
 
-    if (nlf_alpha > 0.6) {
+    if (high_noise_image) {
         std::cout << "despeckleYCbCrImage" << std::endl;
         applyKernel(_glsContext, "despeckleYCbCrImage", *clLinearRGBImage, despeckledImage.get());
     }
 
     auto clDenoisedImage = pyramidalDenoise->denoise(_glsContext, &demosaicParameters->denoiseParameters,
-                                                     nlf_alpha > 0.6 ? despeckledImage.get() : clLinearRGBImage.get(),
+                                                     high_noise_image ? despeckledImage.get() : clLinearRGBImage.get(),
                                                      demosaicParameters->rgb_cam, gmb_position, false,
                                                      &noiseModel->pyramidNlf);
 
@@ -129,6 +136,15 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     // --- Image Post Processing ---
 
     convertTosRGB(_glsContext, *clDenoisedImage, clsRGBImage.get(), demosaicParameters->rgb_cam, *demosaicParameters); // TODO: ???
+
+#ifdef PRINT_EXECUTION_TIME
+    cl::CommandQueue queue = cl::CommandQueue::getDefault();
+    queue.finish();
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+
+    LOG_INFO(TAG) << "OpenCL Pipeline Execution Time: " << (int) elapsed_time_ms << "ms for image of size: " << rawImage.width << " x " << rawImage.height << std::endl;
+#endif
 
     return clsRGBImage.get();
 }
