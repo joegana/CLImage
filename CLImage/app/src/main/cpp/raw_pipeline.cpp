@@ -30,7 +30,7 @@
 
 static const char* TAG = "RawPipeline Test";
 
-static const std::array<NoiseModel, 6> NLF_IMX492 = {
+static const std::array<NoiseModel, 6> NLF_IMX492v1 = {
 {
     // ISO 100
     {
@@ -100,16 +100,83 @@ static const std::array<NoiseModel, 6> NLF_IMX492 = {
     }
 }};
 
+static const std::array<NoiseModel, 6> NLF_IMX492 = {
+    {
+        {
+            { 5.8995e-05, 5.4218e-05, 5.1745e-05, 5.1355e-05 },
+            {
+                4.6078e-05, 3.3181e-06, 3.0636e-06,
+                1.3286e-05, 2.5259e-06, 2.4235e-06,
+                5.0580e-06, 2.0399e-06, 2.0061e-06,
+                2.2516e-06, 1.8550e-06, 1.8422e-06,
+                2.4016e-06, 1.7470e-06, 1.7424e-06,
+            },
+        },
+        {
+            { 1.0815e-04, 9.9500e-05, 9.7302e-05, 1.0157e-04 },
+            {
+                8.7183e-05, 8.2809e-06, 7.6248e-06,
+                2.5632e-05, 6.0580e-06, 5.8181e-06,
+                9.9401e-06, 4.6615e-06, 4.6154e-06,
+                4.5783e-06, 4.1732e-06, 4.1538e-06,
+                3.9608e-06, 3.9518e-06, 3.9546e-06,
+            },
+        },
+        {
+            { 2.0683e-04, 1.9365e-04, 1.9477e-04, 1.9835e-04 },
+            {
+                1.6720e-04, 8.2837e-06, 7.2979e-06,
+                4.6571e-05, 5.2380e-06, 4.8545e-06,
+                1.5780e-05, 3.2460e-06, 3.1590e-06,
+                6.0399e-06, 2.5417e-06, 2.5231e-06,
+                3.9350e-06, 2.2943e-06, 2.2953e-06,
+            },
+        },
+        {
+            { 4.2513e-04, 3.7694e-04, 4.0732e-04, 3.8399e-04 },
+            {
+                3.1399e-04, 1.4670e-05, 1.3769e-05,
+                7.4048e-05, 8.6166e-06, 8.4927e-06,
+                2.1717e-05, 4.8974e-06, 4.9674e-06,
+                5.9704e-06, 3.6236e-06, 3.6382e-06,
+                2.4477e-06, 3.1328e-06, 3.1489e-06,
+            },
+        },
+        {
+            { 8.7268e-04, 7.4568e-04, 8.0404e-04, 7.9171e-04 },
+            {
+                6.3230e-04, 4.4344e-05, 4.1359e-05,
+                1.4667e-04, 2.4977e-05, 2.4449e-05,
+                3.9296e-05, 1.2878e-05, 1.3054e-05,
+                1.1223e-05, 8.5536e-06, 8.6911e-06,
+                5.0937e-06, 7.2092e-06, 7.2716e-06,
+            },
+        },
+        {
+            { 2.5013e-03, 1.7729e-03, 2.2981e-03, 1.7412e-03 },
+            {
+                8.2186e-04, 6.6875e-05, 6.9377e-05,
+                2.2212e-04, 3.9264e-05, 4.2434e-05,
+                7.0234e-05, 2.1307e-05, 2.3023e-05,
+                2.1599e-05, 1.4505e-05, 1.4757e-05,
+                7.8263e-06, 1.2044e-05, 1.1925e-05,
+            },
+        },
+    }};
+
+
 std::array<DenoiseParameters, 5> IMX492DenoiseParameters(int iso) {
-    const gls::Matrix<5, 3> nlf_params = nlfFromIso<5>(NLF_IMX492, iso);
+    const auto nlf_params = nlfFromIso<5>(NLF_IMX492, iso);
 
     // A reasonable denoising calibration on a fairly large range of Noise Variance values
 
     const float min_green_variance = 5e-05;
-    const float max_green_variance = 5e-03;
-    const float nlf_green_variance = std::clamp(nlf_params[0][1], min_green_variance, max_green_variance);
+    const float max_green_variance = 1.7e-03;
+    const float nlf_green_variance = std::clamp(nlf_params.first[1], min_green_variance, max_green_variance);
 
     const float nlf_alpha = log2(nlf_green_variance / min_green_variance) / log2(max_green_variance / min_green_variance);
+
+    std::cout << "nlf_alpha: " << nlf_alpha << " for ISO: " << iso << ", nlf_green_variance: " << nlf_green_variance << std::endl;
 
     std::array<DenoiseParameters, 5> denoiseParameters = {{
         {
@@ -142,7 +209,7 @@ std::array<DenoiseParameters, 5> IMX492DenoiseParameters(int iso) {
     return denoiseParameters;
 }
 
-gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::path& input_path) {
+gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(RawConverter* rawConverter, const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
         .rgbConversionParameters = {
             .contrast = 1.05,
@@ -153,16 +220,16 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::
 
     gls::tiff_metadata dng_metadata, exif_metadata;
     // Leaky IR
-    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.4955, -0.6760, -0.1453, -0.1341, 1.0072, 0.1269, -0.0647, 0.1987, 0.4304 } });
-    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 1.73344, 1, 1 / 1.68018 } });
+//    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.4955, -0.6760, -0.1453, -0.1341, 1.0072, 0.1269, -0.0647, 0.1987, 0.4304 } });
+//    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 1.73344, 1, 1 / 1.68018 } });
 
     // Gzikai
 //    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.6864, -0.7955, -0.3059, 0.0838, 1.0317, -0.1155, 0.0586, 0.0492, 0.3925 } });
 //    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.0777, 1.0000, 1 / 1.8516 } });
 
 //    // Kolari
-//    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 0.6963, -0.2447, -0.1353, -0.3240, 1.2994, 0.0246, -0.0190, 0.1222, 0.4874 } });
-//    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 3.7730, 1.0000, 1 / 1.6040 } });
+    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 0.6963, -0.2447, -0.1353, -0.3240, 1.2994, 0.0246, -0.0190, 0.1222, 0.4874 } });
+    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 3.7730, 1.0000, 1 / 1.6040 } });
 
     dng_metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
     dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });
@@ -173,22 +240,24 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(const std::filesystem::
 
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
 
-    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ true, /*gmb_position=*/ nullptr, /*rotate_180=*/ false);
+    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ true, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
 
-    bool iso = 400;
+    float iso = 400;
     const auto exifIsoSpeedRatings = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
     if (exifIsoSpeedRatings.size() > 0) {
         iso = exifIsoSpeedRatings[0];
     }
 
-    demosaicParameters.noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso);
+    demosaicParameters.noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso).second;
     demosaicParameters.denoiseParameters = IMX492DenoiseParameters(iso);
 
-    return demosaicImage(*inputImage, &demosaicParameters, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
+    return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, &demosaicParameters, nullptr, /*rotate_180=*/ true));
+    // return demosaicImage(*inputImage, &demosaicParameters, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
 }
 
-gls::image<gls::rgb_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem::path& input_path, DemosaicParameters* demosaicParameters,
-                                                           int iso, const gls::rectangle& rotated_gmb_position, bool rotate_180) {
+gls::image<gls::rgb_pixel>::unique_ptr calibrateIMX492DNG(RawConverter* rawConverter, const std::filesystem::path& input_path,
+                                                          DemosaicParameters* demosaicParameters, int iso,
+                                                          const gls::rectangle& rotated_gmb_position, bool rotate_180) {
     gls::tiff_metadata dng_metadata, exif_metadata;
     dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1, 0, 0, 0, 1, 0, 0, 0, 1 } });
     dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1, 1, 1 } });
@@ -214,10 +283,11 @@ gls::image<gls::rgb_pixel>::unique_ptr calibrateIMX492DNG(const std::filesystem:
     // demosaicParameters->noiseModel.pyramidNlf = nlfFromIso<5>(NLF_IMX492, iso);
     demosaicParameters->denoiseParameters = IMX492DenoiseParameters(iso);
 
-    return demosaicImage(*inputImage, demosaicParameters, &rotated_gmb_position, rotate_180);
+    return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, demosaicParameters, &rotated_gmb_position, rotate_180));
+    // return demosaicImage(*inputImage, demosaicParameters, &rotated_gmb_position, rotate_180);
 }
 
-void calibrateIMX492(const std::filesystem::path& input_dir) {
+void calibrateIMX492(RawConverter* rawConverter, const std::filesystem::path& input_dir) {
     struct CalibrationEntry {
         int iso;
         const char* fileName;
@@ -248,7 +318,7 @@ void calibrateIMX492(const std::filesystem::path& input_dir) {
             }
         };
 
-        const auto rgb_image = calibrateIMX492DNG(input_path, &demosaicParameters, entry.iso, entry.gmb_position, entry.rotated);
+        const auto rgb_image = calibrateIMX492DNG(rawConverter, input_path, &demosaicParameters, entry.iso, entry.gmb_position, entry.rotated);
         rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_cal_rgb.png", /*skip_alpha=*/ true);
 
         noiseModel[i] = demosaicParameters.noiseModel;
@@ -261,106 +331,105 @@ void calibrateIMX492(const std::filesystem::path& input_dir) {
     }
 }
 
-static const std::array<NoiseModel, 10> LeicaQ2 = {
-{
+static const std::array<NoiseModel, 10> LeicaQ2 = {{
     {
         { 4.1532e-05, 5.1049e-05, 4.9132e-05, 5.1023e-05 },
         {
-            4.3674e-05, 1.0379e-05, 9.6441e-06,
-            1.8552e-05, 9.2747e-06, 8.9338e-06,
-            1.3263e-05, 8.5899e-06, 8.4892e-06,
-            1.3445e-05, 8.5151e-06, 8.4863e-06,
-            1.8466e-05, 8.7083e-06, 8.7012e-06,
+            4.1312e-05, 1.0074e-05, 9.4039e-06,
+            1.6662e-05, 8.9870e-06, 8.7271e-06,
+            1.2807e-05, 8.4670e-06, 8.3917e-06,
+            1.3421e-05, 8.4607e-06, 8.4367e-06,
+            1.9038e-05, 8.7060e-06, 8.6979e-06,
         },
     },
     {
         { 7.5068e-05, 8.8781e-05, 8.2993e-05, 8.7150e-05 },
         {
-            7.2777e-05, 1.2411e-05, 1.0841e-05,
-            2.4231e-05, 1.0241e-05, 9.4705e-06,
-            1.4979e-05, 8.8609e-06, 8.5951e-06,
-            1.3182e-05, 8.4775e-06, 8.4095e-06,
-            1.9735e-05, 8.7217e-06, 8.6898e-06,
+            6.7970e-05, 1.1851e-05, 1.0426e-05,
+            2.0293e-05, 9.6843e-06, 9.0915e-06,
+            1.4108e-05, 8.6619e-06, 8.4703e-06,
+            1.2932e-05, 8.4371e-06, 8.3854e-06,
+            1.9436e-05, 8.6586e-06, 8.6350e-06,
         },
     },
     {
         { 1.4439e-04, 1.5661e-04, 1.5666e-04, 1.5110e-04 },
         {
-            1.2523e-04, 1.6498e-05, 1.3502e-05,
-            3.1692e-05, 1.2006e-05, 1.0631e-05,
-            1.3537e-05, 9.3939e-06, 8.9393e-06,
-            1.1223e-05, 8.6556e-06, 8.5320e-06,
-            1.8784e-05, 8.4549e-06, 8.4397e-06,
+            1.1609e-04, 1.5258e-05, 1.2506e-05,
+            2.4162e-05, 1.0841e-05, 9.7919e-06,
+            1.1994e-05, 8.8801e-06, 8.5668e-06,
+            1.0726e-05, 8.4753e-06, 8.3922e-06,
+            1.9235e-05, 8.4539e-06, 8.4401e-06,
         },
     },
     {
         { 2.8469e-04, 3.0171e-04, 2.8955e-04, 3.1108e-04 },
         {
-            2.5045e-04, 2.4108e-05, 1.7872e-05,
-            5.9054e-05, 1.5406e-05, 1.2380e-05,
-            2.1917e-05, 1.0282e-05, 9.2603e-06,
-            1.5235e-05, 8.5958e-06, 8.3176e-06,
-            2.1378e-05, 8.4406e-06, 8.3601e-06,
+            2.3128e-04, 2.1952e-05, 1.6445e-05,
+            4.4189e-05, 1.3393e-05, 1.1182e-05,
+            1.8693e-05, 9.6161e-06, 8.9189e-06,
+            1.4783e-05, 8.5263e-06, 8.3429e-06,
+            2.1452e-05, 8.4616e-06, 8.4081e-06,
         },
     },
     {
         { 5.5517e-04, 5.6939e-04, 5.5710e-04, 5.6703e-04 },
         {
-            4.6474e-04, 3.8187e-05, 2.7072e-05,
-            9.9054e-05, 2.1815e-05, 1.6527e-05,
-            2.9705e-05, 1.1910e-05, 1.0273e-05,
-            1.8941e-05, 9.3757e-06, 8.9502e-06,
-            2.1832e-05, 8.6840e-06, 8.5610e-06,
+            4.3019e-04, 3.4346e-05, 2.3918e-05,
+            7.0441e-05, 1.7729e-05, 1.3690e-05,
+            2.2866e-05, 1.0344e-05, 9.2142e-06,
+            1.7440e-05, 8.8394e-06, 8.5461e-06,
+            2.2038e-05, 8.6508e-06, 8.5369e-06,
         },
     },
     {
         { 1.0746e-03, 1.1374e-03, 1.0807e-03, 1.0729e-03 },
         {
-            6.2536e-04, 7.3135e-05, 5.0166e-05,
-            1.6314e-04, 4.1916e-05, 3.0638e-05,
-            5.0844e-05, 2.3085e-05, 1.9377e-05,
-            2.3116e-05, 1.6441e-05, 1.5230e-05,
-            1.9482e-05, 1.3091e-05, 1.2686e-05,
+            8.1951e-04, 7.1597e-05, 4.8875e-05,
+            1.2823e-04, 3.5454e-05, 2.6665e-05,
+            3.9349e-05, 2.0165e-05, 1.7603e-05,
+            1.9780e-05, 1.5566e-05, 1.4709e-05,
+            1.8258e-05, 1.3133e-05, 1.2844e-05,
         },
     },
     {
         { 2.2234e-03, 2.2147e-03, 2.1940e-03, 2.1301e-03 },
         {
-            1.1869e-03, 1.3923e-04, 8.9097e-05,
-            2.9877e-04, 7.4865e-05, 5.0645e-05,
-            8.5321e-05, 3.5109e-05, 2.7355e-05,
-            3.4933e-05, 2.0874e-05, 1.8783e-05,
-            2.0153e-05, 1.9063e-05, 1.8411e-05,
+            8.4795e-04, 1.0960e-04, 7.2299e-05,
+            1.9413e-04, 5.7065e-05, 4.0752e-05,
+            6.4663e-05, 2.9441e-05, 2.4181e-05,
+            2.9165e-05, 1.9559e-05, 1.8103e-05,
+            1.9366e-05, 1.9547e-05, 1.8951e-05,
         },
     },
     {
         { 4.2268e-03, 4.6509e-03, 4.4503e-03, 4.5066e-03 },
         {
-            2.4664e-03, 2.6431e-04, 1.5686e-04,
-            6.0625e-04, 1.3315e-04, 8.1000e-05,
-            1.6467e-04, 5.1311e-05, 3.4506e-05,
-            5.0127e-05, 2.1918e-05, 1.7752e-05,
-            1.9439e-05, 1.5526e-05, 1.4372e-05,
+            1.7452e-03, 2.0121e-04, 1.2382e-04,
+            3.8566e-04, 9.6547e-05, 6.0973e-05,
+            1.1020e-04, 3.9928e-05, 2.8150e-05,
+            3.6234e-05, 1.9695e-05, 1.6357e-05,
+            1.4462e-05, 1.5014e-05, 1.3909e-05,
         },
     },
     {
         { 7.8770e-03, 8.5880e-03, 8.0832e-03, 8.6783e-03 },
         {
-            4.8651e-03, 5.6487e-04, 3.0475e-04,
-            1.1912e-03, 2.7469e-04, 1.5318e-04,
-            3.1822e-04, 1.0242e-04, 6.1245e-05,
-            1.0085e-04, 4.0556e-05, 3.0931e-05,
-            3.3533e-05, 2.4757e-05, 2.3498e-05,
+            3.4289e-03, 4.1534e-04, 2.2744e-04,
+            7.5898e-04, 1.9094e-04, 1.0786e-04,
+            2.2905e-04, 7.4909e-05, 4.4680e-05,
+            7.9700e-05, 3.0407e-05, 2.3642e-05,
+            3.0847e-05, 2.0387e-05, 1.9512e-05,
         },
     },
     {
         { 1.8687e-02, 1.6641e-02, 1.6274e-02, 1.6624e-02 },
         {
-            1.0067e-02, 1.4355e-03, 7.4581e-04,
-            2.2852e-03, 6.7995e-04, 3.6244e-04,
-            5.5398e-04, 2.4559e-04, 1.4715e-04,
-            1.1395e-04, 9.4160e-05, 6.9658e-05,
-            4.0989e-05, 6.4033e-05, 5.9701e-05,
+            6.9207e-03, 1.0348e-03, 5.4667e-04,
+            1.3573e-03, 4.5881e-04, 2.4605e-04,
+            3.5136e-04, 1.6777e-04, 9.9908e-05,
+            8.1214e-05, 6.5037e-05, 4.8126e-05,
+            3.4860e-05, 4.4629e-05, 4.1289e-05,
         },
     },
 }
@@ -377,18 +446,48 @@ std::array<DenoiseParameters, 5> LeicaQ2DenoiseParameters(int iso) {
 
     const float nlf_alpha = log2(nlf_green_variance / min_green_variance) / log2(max_green_variance / min_green_variance);
 
-    const float iso_alpha = 2 * std::clamp(nlf_alpha - 0.5, 0.0, 0.5);
+    const float iso_alpha = nlf_alpha; // 2 * std::clamp(nlf_alpha - 0.5, 0.0, 0.5);
 
+    // GuidedFast
+//    std::array<DenoiseParameters, 5> denoiseParameters = {{
+//        {
+//            .luma = 0.5f, // std::lerp(0.5f, 1.0f, iso_alpha),
+//            .chroma = std::lerp(1.0f, 16.0f, iso_alpha),
+//            .sharpening = std::lerp(1.5f, 0.7f, nlf_alpha)
+//        },
+//        {
+//            .luma = std::lerp(0.75f, 1.0f, iso_alpha),
+//            .chroma = std::lerp(0.75f, 8.0f, iso_alpha),
+//            .sharpening = std::lerp(1.0f, 0.8f, nlf_alpha),
+//        },
+//        {
+//            .luma = std::lerp(0.75f, 4.0f, iso_alpha),
+//            .chroma = std::lerp(0.75f, 4.0f, iso_alpha),
+//            .sharpening = 1
+//        },
+//        {
+//            .luma = std::lerp(0.25f, 4.0f, iso_alpha),
+//            .chroma = std::lerp(0.25f, 2.0f, iso_alpha),
+//            .sharpening = 1
+//        },
+//        {
+//            .luma = std::lerp(0.125f, 2.0f, iso_alpha),
+//            .chroma = std::lerp(0.125f, 2.0f, iso_alpha),
+//            .sharpening = 1
+//        }
+//    }};
+
+    // Bilateral
     std::array<DenoiseParameters, 5> denoiseParameters = {{
         {
             .luma = std::lerp(0.5f, 1.0f, iso_alpha),
             .chroma = std::lerp(1.0f, 4.0f, iso_alpha),
-            .sharpening = std::lerp(1.2f, 1.0f, nlf_alpha)
+            .sharpening = std::lerp(1.5f, 0.7f, nlf_alpha)
         },
         {
             .luma = std::lerp(0.75f, 2.0f, iso_alpha),
-            .chroma = std::lerp(0.75f, 2.0f, iso_alpha),
-            .sharpening = 1,
+            .chroma = std::lerp(0.75f, 4.0f, iso_alpha),
+            .sharpening = std::lerp(1.0f, 0.8f, nlf_alpha),
         },
         {
             .luma = std::lerp(0.75f, 8.0f, iso_alpha),
@@ -397,12 +496,12 @@ std::array<DenoiseParameters, 5> LeicaQ2DenoiseParameters(int iso) {
         },
         {
             .luma = std::lerp(0.25f, 4.0f, iso_alpha),
-            .chroma = std::lerp(0.25f, 2.0f, iso_alpha),
+            .chroma = std::lerp(0.25f, 4.0f, iso_alpha),
             .sharpening = 1
         },
         {
             .luma = std::lerp(0.125f, 2.0f, iso_alpha),
-            .chroma = std::lerp(0.125f, 2.0f, iso_alpha),
+            .chroma = std::lerp(0.125f, 4.0f, iso_alpha),
             .sharpening = 1
         }
     }};
@@ -466,7 +565,7 @@ void calibrateLeicaQ2(RawConverter* rawConverter, const std::filesystem::path& i
         };
 
         const auto rgb_image = calibrateLeicaQ2(rawConverter, input_path, &demosaicParameters, entry.iso, entry.gmb_position);
-        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_cal_mix_rgb.png", /*skip_alpha=*/ true);
+        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_cal_bilateral.png", /*skip_alpha=*/ true);
 
         noiseModel[i] = demosaicParameters.noiseModel;
     }
@@ -713,69 +812,45 @@ std::array<DenoiseParameters, 5> iPhone11DenoiseParameters(int iso, float varian
 
     // A reasonable denoising calibration on a fairly large range of Noise Variance values
 
-    const float min_green_variance = 5e-05;
-    const float max_green_variance = 1.6e-02;
-    const float nlf_green_variance = std::clamp(nlf_params.first[1], min_green_variance, max_green_variance);
+    const float min_green_variance = 1.2586e-05;
+    const float max_green_variance = 6.6268e-04;
+    const float nlf_green_variance = std::clamp(nlf_params.second[0][1], min_green_variance, max_green_variance);
 
-    const float nlf_alpha = log2(nlf_green_variance / min_green_variance) / log2(max_green_variance / min_green_variance);
+    // const float nlf_alpha = log2(nlf_green_variance / min_green_variance) / log2(max_green_variance / min_green_variance);
 
-    const float iso_alpha = 2 * std::clamp(nlf_alpha - 0.5, 0.0, 0.5);
+    const float nlf_alpha = (nlf_green_variance - min_green_variance) / (max_green_variance - min_green_variance);
+
+    const float iso_alpha = std::clamp((nlf_alpha - 0.2) / 0.8, 0.0, 1.0);
+
+    std::cout << "iPhone11DenoiseParameters for ISO " << iso << ", nlf_alpha: " << nlf_alpha << ", iso_alpha: " << iso_alpha << std::endl;
 
     std::array<DenoiseParameters, 5> denoiseParameters = {{
         {
-            .luma = std::lerp(0.5f, 2.0f, iso_alpha),
-            .chroma = std::lerp(1.0f, 16.0f, iso_alpha),
-            .sharpening = std::lerp(2.0f, 0.7f, nlf_alpha)
-        },
-        {
-            .luma = std::lerp(0.75f, 4.0f, iso_alpha),
-            .chroma = std::lerp(0.75f, 8.0f, iso_alpha),
-            .sharpening = std::lerp(1.0f, 0.8f, nlf_alpha)
-        },
-        {
-            .luma = std::lerp(0.75f, 2.0f, iso_alpha),
-            .chroma = std::lerp(0.75f, 8.0f, iso_alpha),
+            .luma = 0.125, // 1 * std::lerp(0.5f, 1.0f, iso_alpha),
+            .chroma = 1.0f * std::lerp(1.0f, 16.0f, iso_alpha),
             .sharpening = 1
         },
         {
-            .luma = std::lerp(0.25f, 1.0f, iso_alpha),
-            .chroma = std::lerp(0.25f, 8.0f, iso_alpha),
+            .luma = 0.75f * std::lerp(1.0f, 1.0f, iso_alpha),
+            .chroma = 0.75f * std::lerp(1.0f, 16.0f, iso_alpha),
             .sharpening = 1
         },
         {
-            .luma = std::lerp(0.125f, 0.5f, iso_alpha),
-            .chroma = std::lerp(0.125f, 8.0f, iso_alpha),
+            .luma = 0.5f * std::lerp(1.0f, 1.0f, iso_alpha),
+            .chroma = 0.5f * std::lerp(1.0f, 8.0f, iso_alpha),
+            .sharpening = 1
+        },
+        {
+            .luma = 0.25f * std::lerp(1.0f, 1.0f, iso_alpha),
+            .chroma = 0.25f * std::lerp(1.0f, 8.0f, iso_alpha),
+            .sharpening = 1
+        },
+        {
+            .luma = 0.25f * std::lerp(1.0f, 1.0f, iso_alpha),
+            .chroma = 0.25f * std::lerp(1.0f, 8.0f, iso_alpha),
             .sharpening = 1
         }
     }};
-
-//    std::array<DenoiseParameters, 5> denoiseParameters = {{
-//        {
-//            .luma = 0.25,
-//            .chroma = 64,
-//            .sharpening = 1
-//        },
-//        {
-//            .luma = 0.75f,
-//            .chroma = 32 * 0.75f,
-//            .sharpening = 1
-//        },
-//        {
-//            .luma = 0.5f,
-//            .chroma = 16 * 0.5f,
-//            .sharpening = 1
-//        },
-//        {
-//            .luma = 0.25f,
-//            .chroma = 8 * 0.25f,
-//            .sharpening = 1
-//        },
-//        {
-//            .luma = 0.125f,
-//            .chroma = 4 * 0.125f,
-//            .sharpening = 1
-//        }
-//    }};
 
     return denoiseParameters;
 }
@@ -900,24 +975,28 @@ int main(int argc, const char* argv[]) {
     printf("RawPipeline Test!\n");
 
     if (argc > 1) {
-//        auto input_dir = std::filesystem::path(argv[1]);
+        gls::OpenCLContext glsContext("");
+        RawConverter rawConverter(&glsContext);
 
-//        std::vector<std::filesystem::path> directory_listing;
-//        std::copy(std::filesystem::directory_iterator(input_dir), std::filesystem::directory_iterator(),
-//                  std::back_inserter(directory_listing));
-//        std::sort(directory_listing.begin(), directory_listing.end());
-//
-//        for (const auto& input_path : directory_listing) {
-//            if (input_path.extension() != ".dng" || input_path.filename().string().starts_with(".")) {
-//                continue;
-//            }
-//
-//            LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
-//
-//            // transcodeAdobeDNG(input_path);
-//            const auto rgb_image = demosaicIMX492DNG(input_path);
-//            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.jpg", 95);
-//        }
+        auto input_dir = std::filesystem::path(argv[1]);
+
+        std::vector<std::filesystem::path> directory_listing;
+        std::copy(std::filesystem::directory_iterator(input_dir), std::filesystem::directory_iterator(),
+                  std::back_inserter(directory_listing));
+        std::sort(directory_listing.begin(), directory_listing.end());
+
+        for (const auto& input_path : directory_listing) {
+            if (input_path.extension() != ".DNG" || input_path.filename().string().starts_with(".")) {
+                continue;
+            }
+
+            LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+
+            // transcodeAdobeDNG(input_path);
+            // const auto rgb_image = demosaicIMX492DNG(&rawConverter, input_path);
+            const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
+            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.jpg", 95);
+        }
 
         auto input_path = std::filesystem::path(argv[1]);
 //
@@ -943,17 +1022,16 @@ int main(int argc, const char* argv[]) {
 //
 //        const auto rgb_image = calibrateIMX492DNG(input_path, &demosaicParameters, /*iso=*/ 100, rotated_gmb_position, rotate_180);
 
-        gls::OpenCLContext glsContext("");
-        RawConverter rawConverter(&glsContext);
-
-        // calibrateIMX492(input_path.parent_path());
-        calibrateLeicaQ2(&rawConverter, input_path.parent_path());
+        // calibrateIMX492(&rawConverter, input_path.parent_path());
+        // calibrateLeicaQ2(&rawConverter, input_path.parent_path());
 
         // calibrateiPhone11(&rawConverter, input_path.parent_path());
 
-        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
-
-        const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
-        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
+//        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+//
+//        const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
+//        // const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
+//        // const auto rgb_image = demosaicIMX492DNG(&rawConverter, input_path);
+//        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
     }
 }

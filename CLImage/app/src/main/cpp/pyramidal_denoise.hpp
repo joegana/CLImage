@@ -41,7 +41,7 @@ struct PyramidalDenoise {
     std::array<imageType::unique_ptr, levels> denoisedImagePyramid;
     std::array<std::unique_ptr<ImageDenoiser>, levels> denoiser;
 
-    PyramidalDenoise(gls::OpenCLContext* glsContext, int width, int height, DenoiseAlgorithm _denoiseAlgorithm = GuidedFast);
+    PyramidalDenoise(gls::OpenCLContext* glsContext, int width, int height, DenoiseAlgorithm _denoiseAlgorithm = Bilateral);
 
     imageType* denoise(gls::OpenCLContext* glsContext, std::array<DenoiseParameters, levels>* denoiseParameters,
                        imageType* image, const gls::Matrix<3, 3>& rgb_cam,

@@ -704,7 +704,7 @@ kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t 
                            dot(transform.m[1], pixel_value),
                            dot(transform.m[2], pixel_value));
 
-    write_imagef(rgbImage, imageCoordinates, (float4) (toneCurve(clamp(rgb, 0.0, 1.0), rgbConversionParameters.toneCurveSlope), 0.0));
+    write_imagef(rgbImage, imageCoordinates, (float4) (clamp(toneCurve(rgb, rgbConversionParameters.toneCurveSlope), 0.0, 1.0), 0.0));
 }
 
 kernel void resample(read_only image2d_t inputImage, write_only image2d_t outputImage, sampler_t linear_sampler) {

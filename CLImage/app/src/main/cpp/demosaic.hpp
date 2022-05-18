@@ -116,23 +116,23 @@ gls::Matrix<levels, 3> lerpNLF(const gls::Matrix<levels, 3>& NLFData0, const gls
 }
 
 template <int levels>
-gls::Matrix<levels, 3> nlfFromIso(const std::array<NoiseModel, 6>& NLFData, int iso) {
+std::pair<gls::Vector<4>, gls::Matrix<levels, 3>> nlfFromIso(const std::array<NoiseModel, 6>& NLFData, int iso) {
     iso = std::clamp(iso, 100, 3200);
     if (iso >= 100 && iso < 200) {
         float a = (iso - 100) / 100;
-        return lerpNLF<levels>(NLFData[0].pyramidNlf, NLFData[1].pyramidNlf, a);
+        return std::pair(lerpRawNLF(NLFData[0].rawNlf, NLFData[1].rawNlf, a), lerpNLF<levels>(NLFData[0].pyramidNlf, NLFData[1].pyramidNlf, a));
     } else if (iso >= 200 && iso < 400) {
         float a = (iso - 200) / 200;
-        return lerpNLF<levels>(NLFData[1].pyramidNlf, NLFData[2].pyramidNlf, a);
+        return std::pair(lerpRawNLF(NLFData[1].rawNlf, NLFData[2].rawNlf, a), lerpNLF<levels>(NLFData[1].pyramidNlf, NLFData[2].pyramidNlf, a));
     } else if (iso >= 400 && iso < 800) {
         float a = (iso - 400) / 400;
-        return lerpNLF<levels>(NLFData[2].pyramidNlf, NLFData[3].pyramidNlf, a);
+        return std::pair(lerpRawNLF(NLFData[2].rawNlf, NLFData[3].rawNlf, a), lerpNLF<levels>(NLFData[2].pyramidNlf, NLFData[3].pyramidNlf, a));
     } else if (iso >= 800 && iso < 1600) {
         float a = (iso - 800) / 800;
-        return lerpNLF<levels>(NLFData[3].pyramidNlf, NLFData[4].pyramidNlf, a);
+        return std::pair(lerpRawNLF(NLFData[3].rawNlf, NLFData[4].rawNlf, a), lerpNLF<levels>(NLFData[3].pyramidNlf, NLFData[4].pyramidNlf, a));
     } else /* if (iso >= 1600 && iso <= 3200) */ {
         float a = (iso - 1600) / 1600;
-        return lerpNLF<levels>(NLFData[4].pyramidNlf, NLFData[5].pyramidNlf, a);
+        return std::pair(lerpRawNLF(NLFData[4].rawNlf, NLFData[5].rawNlf, a), lerpNLF<levels>(NLFData[4].pyramidNlf, NLFData[5].pyramidNlf, a));
     }
 }
 
