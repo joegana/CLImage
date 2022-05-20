@@ -381,7 +381,7 @@ float3 denoiseLumaChromaTight(float3 sigma, image2d_t inputImage, int2 imageCoor
         for (int x = -2; x <= 2; x++) {
             float3 inputSampleYCC = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
 
-            float3 inputDiff = fabs(inputSampleYCC - inputYCC);
+            float3 inputDiff = inputSampleYCC - inputYCC;
             float3 sampleWeight = 1 - step(sigma, length(inputDiff));
 
             filtered_pixel += sampleWeight * inputSampleYCC;
@@ -411,8 +411,8 @@ float3 denoiseLumaChromaLoose(float3 sigma, image2d_t inputImage, int2 imageCoor
         for (int x = -2; x <= 2; x++) {
             float3 inputSampleYCC = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
 
-            float3 inputDiff = fabs(inputSampleYCC - inputYCC);
-            float3 sampleWeight = 1 - step(sigma, inputDiff);
+            float3 inputDiff = inputSampleYCC - inputYCC;
+            float3 sampleWeight = 1 - step(sigma, fabs(inputDiff));
 
             filtered_pixel += sampleWeight * inputSampleYCC;
             kernel_norm += sampleWeight;
@@ -589,10 +589,10 @@ kernel void rawRGBAToBayer(read_only image2d_t rgbaImage, write_only image2d_t r
     write_imagef(rawImage, 2 * imageCoordinates + g2, rgba.w);
 }
 
-float4 denoiseRawRGBA(float4 sigmaRaw, image2d_t inputImage, int2 imageCoordinates) {
+float4 denoiseRawRGBA(float4 rawVariance, image2d_t inputImage, int2 imageCoordinates) {
     const float4 input = read_imagef(inputImage, imageCoordinates);
 
-    float4 sigma = 0.5 * sqrt(sigmaRaw * input);
+    float4 sigma = 0.5 * sqrt(rawVariance * input);
 
     float4 filtered_pixel = 0;
     float4 kernel_norm = 0;
@@ -610,10 +610,123 @@ float4 denoiseRawRGBA(float4 sigmaRaw, image2d_t inputImage, int2 imageCoordinat
     return filtered_pixel / kernel_norm;
 }
 
-kernel void denoiseRawRGBAImage(read_only image2d_t inputImage, float4 sigmaRaw, write_only image2d_t denoisedImage) {
+float4 denoiseRawRGBAGuided(float4 rawVariance, image2d_t inputImage, int2 imageCoordinates) {
+    const float4 input = read_imagef(inputImage, imageCoordinates);
+
+    float4 noiseVar = 0.1 * rawVariance * input;
+
+    int radius = 5;
+    int count = (2 * radius + 1) * (2 * radius + 1);
+
+    float4 sum = 0;
+    float4 sumSq = 0;
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
+            float4 inputSample = read_imagef(inputImage, imageCoordinates + (int2)(x, y));
+            sum += inputSample;
+            sumSq += inputSample * inputSample;
+        }
+    }
+    float4 mean = sum / count;
+    float4 var = (sumSq - (sum * sum) / count) / count;
+
+    float4 filtered_pixel = 0;
+    float4 kernel_norm = 0;
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
+            float4 inputSample = read_imagef(inputImage, imageCoordinates + (int2)(x, y));
+
+            float4 sampleWeight = 1 + (inputSample - mean) * (input - mean) / (var + noiseVar);
+
+            filtered_pixel += sampleWeight * inputSample;
+            kernel_norm += sampleWeight;
+        }
+    }
+    return filtered_pixel / kernel_norm;
+}
+
+float4 denoiseRawRGBAGuidedCov(float4 eps, image2d_t inputImage, int2 imageCoordinates) {
+    const float4 input = read_imagef(inputImage, imageCoordinates);
+
+    const int radius = 2;
+    const float norm = 1.0 / ((2 * radius + 1) * (2 * radius + 1));
+
+    float3 mean_I = 0;
+    float mean_I_rr = 0;
+    float mean_I_rg = 0;
+    float mean_I_rb = 0;
+    float mean_I_gg = 0;
+    float mean_I_gb = 0;
+    float mean_I_bb = 0;
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
+            float4 sampleRGBA = read_imagef(inputImage, imageCoordinates + (int2)(x, y));
+            float3 sample = (float3) (sampleRGBA.x, (sampleRGBA.y + sampleRGBA.w) / 2, sampleRGBA.z);
+            mean_I += sample;
+            mean_I_rr += sample.x * sample.x;
+            mean_I_rg += sample.x * sample.y;
+            mean_I_rb += sample.x * sample.z;
+            mean_I_gg += sample.y * sample.y;
+            mean_I_gb += sample.y * sample.z;
+            mean_I_bb += sample.z * sample.z;
+        }
+    }
+    mean_I *= norm;
+    mean_I_rr *= norm;
+    mean_I_rg *= norm;
+    mean_I_rb *= norm;
+    mean_I_gg *= norm;
+    mean_I_gb *= norm;
+    mean_I_bb *= norm;
+
+    float var_I_rr = mean_I_rr - mean_I.x * mean_I.x;
+    float var_I_rg = mean_I_rg - mean_I.x * mean_I.y;
+    float var_I_rb = mean_I_rb - mean_I.x * mean_I.z;
+    float var_I_gg = mean_I_gg - mean_I.y * mean_I.y;
+    float var_I_gb = mean_I_gb - mean_I.y * mean_I.z;
+    float var_I_bb = mean_I_bb - mean_I.z * mean_I.z;
+
+    float var_I_rr_eps = var_I_rr + 0.2 * eps.x * input.x;
+    float var_I_gg_eps = var_I_gg + 0.2 * eps.y * (input.y + input.w) / 2;
+    float var_I_bb_eps = var_I_bb + 0.2 * eps.z * input.z;
+
+    float invrr = var_I_gg_eps * var_I_bb_eps - var_I_gb     * var_I_gb;
+    float invrg = var_I_gb     * var_I_rb     - var_I_rg     * var_I_bb_eps;
+    float invrb = var_I_rg     * var_I_gb     - var_I_gg_eps * var_I_rb;
+    float invgg = var_I_rr_eps * var_I_bb_eps - var_I_rb     * var_I_rb;
+    float invgb = var_I_rb     * var_I_rg     - var_I_rr_eps * var_I_gb;
+    float invbb = var_I_rr_eps * var_I_gg_eps - var_I_rg     * var_I_rg;
+
+    float invCovDet = 1 / (invrr * var_I_rr_eps + invrg * var_I_rg + invrb * var_I_rb);
+
+    invrr *= invCovDet;
+    invrg *= invCovDet;
+    invrb *= invCovDet;
+    invgg *= invCovDet;
+    invgb *= invCovDet;
+    invbb *= invCovDet;
+
+    // Compute the result
+
+    // covariance of (I, p) in each local patch.
+    float3 cov_Ip_r = (float3) (var_I_rr, var_I_rg, var_I_rb);
+    float3 cov_Ip_g = (float3) (var_I_rg, var_I_gg, var_I_gb);
+    float3 cov_Ip_b = (float3) (var_I_rb, var_I_gb, var_I_bb);
+
+    float3 a_r = invrr * cov_Ip_r + invrg * cov_Ip_g + invrb * cov_Ip_b;
+    float3 a_g = invrg * cov_Ip_r + invgg * cov_Ip_g + invgb * cov_Ip_b;
+    float3 a_b = invrb * cov_Ip_r + invgb * cov_Ip_g + invbb * cov_Ip_b;
+
+    float3 b = mean_I - a_r * mean_I.x - a_g * mean_I.y - a_b * mean_I.z; // Eqn. (15) in the paper;
+
+    return (float4) (a_r * input.x + a_g * input.y + a_b * input.z + b,
+                     a_r.y * input.x + a_g.y * input.w + a_b.y * input.z + b.y);
+}
+
+kernel void denoiseRawRGBAImage(read_only image2d_t inputImage, float4 rawVariance, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float4 denoisedPixel = denoiseRawRGBA(sigmaRaw, inputImage, imageCoordinates);
+    float4 denoisedPixel = denoiseRawRGBAGuidedCov(rawVariance, inputImage, imageCoordinates);
 
     write_imagef(denoisedImage, imageCoordinates, denoisedPixel);
 }

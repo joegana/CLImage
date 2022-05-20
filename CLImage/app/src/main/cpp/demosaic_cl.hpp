@@ -92,7 +92,7 @@ void rawRGBAToBayer(gls::OpenCLContext* glsContext,
 
 void denoiseRawRGBAImage(gls::OpenCLContext* glsContext,
                          const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                         const gls::Vector<4> rawSigma,
+                         const gls::Vector<4> rawVariance,
                          gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
 
 void despeckleRawRGBAImage(gls::OpenCLContext* glsContext,

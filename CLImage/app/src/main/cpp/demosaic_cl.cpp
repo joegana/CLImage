@@ -322,22 +322,20 @@ void rawRGBAToBayer(gls::OpenCLContext* glsContext,
 
 void denoiseRawRGBAImage(gls::OpenCLContext* glsContext,
                          const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                         const gls::Vector<4> rawSigma,
+                         const gls::Vector<4> rawVariance,
                          gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
     // Load the shader source
     const auto program = glsContext->loadProgram("demosaic");
 
     // Bind the kernel parameters
     auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
-                                    cl_float4,   // denoiseParameters
+                                    cl_float4,    // rawVariance
                                     cl::Image2D   // outputImage
                                     >(program, "denoiseRawRGBAImage");
 
-    // std::cout << "denoiseImage with parameters: " << denoiseParameters.lumaSigma << ", " << denoiseParameters.crSigma << ", " << denoiseParameters.cbSigma << std::endl;
-
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImage.getImage2D(), { rawSigma[0], rawSigma[1], rawSigma[2], rawSigma[3] }, outputImage->getImage2D());
+           inputImage.getImage2D(), { rawVariance[0], rawVariance[1], rawVariance[2], rawVariance[3] }, outputImage->getImage2D());
 }
 
 void despeckleRawRGBAImage(gls::OpenCLContext* glsContext,
@@ -350,8 +348,6 @@ void despeckleRawRGBAImage(gls::OpenCLContext* glsContext,
     auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
                                     cl::Image2D   // outputImage
                                     >(program, "despeckleRawRGBAImage");
-
-    // std::cout << "denoiseImage with parameters: " << denoiseParameters.lumaSigma << ", " << denoiseParameters.crSigma << ", " << denoiseParameters.cbSigma << std::endl;
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
