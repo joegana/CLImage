@@ -56,15 +56,9 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     NoiseModel* noiseModel = &demosaicParameters->noiseModel;
 
-    // TODO: Unify this
-    const float min_green_variance = 5e-05;
-    const float max_green_variance = 1.6e-02;
-    const float nlf_green_variance = std::clamp(noiseModel->rawNlf[1], min_green_variance, max_green_variance);
+    const bool high_noise_image = demosaicParameters->noiseLevel > 0.6;
 
-    const float nlf_alpha = log2(nlf_green_variance / min_green_variance) / log2(max_green_variance / min_green_variance);
-    const bool high_noise_image = nlf_alpha > 0.6;
-
-    LOG_INFO(TAG) << "nlf_green_variance: " << nlf_green_variance << ", nlf_alpha: " << std::fixed << nlf_alpha << std::endl;
+    LOG_INFO(TAG) << "NoiseLevel: " << demosaicParameters->noiseLevel << std::endl;
 
     allocateTextures(_glsContext, rawImage.width, rawImage.height);
     if (high_noise_image) {
@@ -120,15 +114,19 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     transformImage(_glsContext, *clLinearRGBImage, clLinearRGBImage.get(), cam_to_ycbcr);
 
+    // applyKernel(_glsContext, "desaturateEdges", *clLinearRGBImage, clLinearRGBImage.get());
+
     if (high_noise_image) {
         std::cout << "despeckleYCbCrImage" << std::endl;
         applyKernel(_glsContext, "despeckleYCbCrImage", *clLinearRGBImage, despeckledImage.get());
     }
 
-    auto clDenoisedImage = pyramidalDenoise->denoise(_glsContext, &demosaicParameters->denoiseParameters,
+    auto clDenoisedImage = pyramidalDenoise->denoise(_glsContext, &(demosaicParameters->denoiseParameters),
                                                      high_noise_image ? despeckledImage.get() : clLinearRGBImage.get(),
                                                      demosaicParameters->rgb_cam, gmb_position, false,
-                                                     &noiseModel->pyramidNlf);
+                                                     &(noiseModel->pyramidNlf));
+
+    std::cout << "pyramidNlf:\n" << std::scientific << noiseModel->pyramidNlf << std::endl;
 
     // Convert result back to camera RGB
     transformImage(_glsContext, *clDenoisedImage, clDenoisedImage, inverse(cam_to_ycbcr));

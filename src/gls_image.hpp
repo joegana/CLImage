@@ -274,10 +274,18 @@ class image : public basic_image<T> {
         }
     }
 
-    void apply(std::function<void(T& pixel)> process) {
+    void apply(std::function<void(const T& pixel, int x, int y)> process) const {
         for (int y = 0; y < basic_image<T>::height; y++) {
             for (int x = 0; x < basic_image<T>::width; x++) {
-                process((*this)[y][x]);
+                process((*this)[y][x], x, y);
+            }
+        }
+    }
+
+    void apply(std::function<void(T* pixel, int x, int y)> process) {
+        for (int y = 0; y < basic_image<T>::height; y++) {
+            for (int x = 0; x < basic_image<T>::width; x++) {
+                process(&(*this)[y][x], x, y);
             }
         }
     }
@@ -344,7 +352,8 @@ class image : public basic_image<T> {
 
     // Helper function for read_tiff_file and read_dng_file
     static bool process_tiff_strip(image* destination, int tiff_bitspersample, int tiff_samplesperpixel,
-                                   int row, int strip_height, uint8_t *tiff_buffer) {
+                                   int destination_row, int strip_width, int strip_height,
+                                   int crop_x, int crop_y, uint8_t *tiff_buffer) {
         typedef typename T::dataType dataType;
 
         std::function<dataType()> nextTiffPixelSame = [&tiff_buffer]() -> dataType {
@@ -367,10 +376,14 @@ class image : public basic_image<T> {
                 ? nextTiffPixel8to16
                 : nextTiffPixel16to8;
 
-        for (int y = row; y < row + strip_height; ++y) {
-            for (int x = 0; x < destination->width; ++x) {
+        for (int y = 0; y < strip_height && y + destination_row - crop_y < destination->height; y++) {
+            for (int x = 0; x < strip_width; x++) {
                 for (int c = 0; c < std::min((int) tiff_samplesperpixel, T::channels); c++) {
-                    (*destination)[y][x][c] = nextTiffPixel();
+                    if (x >= crop_x && y + destination_row >= crop_y) {
+                        (*destination)[y + destination_row - crop_y][x - crop_x][c] = nextTiffPixel();
+                    } else {
+                        nextTiffPixel();
+                    }
                 }
             }
         }
@@ -385,9 +398,11 @@ class image : public basic_image<T> {
                                 return (image = std::make_unique<gls::image<T>>(width, height)) != nullptr;
                             },
                             [&image](int tiff_bitspersample, int tiff_samplesperpixel,
-                                     int row, int strip_height, uint8_t *tiff_buffer) -> bool {
+                                     int row, int strip_width, int strip_height,
+                                     int crop_x, int crop_y, uint8_t *tiff_buffer) -> bool {
                                 return process_tiff_strip(image.get(), tiff_bitspersample, tiff_samplesperpixel,
-                                                          row, strip_height, tiff_buffer);
+                                                          row, /*strip_width=*/ image->width, strip_height,
+                                                          /*crop_x=*/ 0, /*crop_y=*/ 0, tiff_buffer);
                             });
         return image;
     }
@@ -408,9 +423,11 @@ class image : public basic_image<T> {
                                 return (image = std::make_unique<gls::image<T>>(width, height)) != nullptr;
                             },
                             [&image](int tiff_bitspersample, int tiff_samplesperpixel,
-                                     int row, int strip_height, uint8_t *tiff_buffer) -> bool {
+                                     int row, int strip_width, int strip_height,
+                                     int crop_x, int crop_y, uint8_t *tiff_buffer) -> bool {
                                 return process_tiff_strip(image.get(), tiff_bitspersample, tiff_samplesperpixel,
-                                                          row, strip_height, tiff_buffer);
+                                                          row, /*strip_width=*/ strip_width, strip_height,
+                                                          /*crop_x=*/ crop_x, /*crop_y=*/ crop_y, tiff_buffer);
                             });
         return image;
     }

@@ -245,6 +245,22 @@ void median_load_data_3x3(float v[9], image2d_t inputImage, int2 imageCoordinate
     }
 }
 
+void median_load_data_3x3_chroma(float2 v[9], image2d_t inputImage, int2 imageCoordinates) {
+    for(int x = -1; x <= 1; x++) {
+        for(int y = -1; y <= 1; y++) {
+            v[(x + 1) * 3 + (y + 1)] = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).yz;
+        }
+    }
+}
+
+void median_load_data_3x3x3(float3 v[9], image2d_t inputImage, int2 imageCoordinates) {
+    for(int x = -1; x <= 1; x++) {
+        for(int y = -1; y <= 1; y++) {
+            v[(x + 1) * 3 + (y + 1)] = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
+        }
+    }
+}
+
 #define s2(a, b)                temp = a; a = min(a, b); b = max(temp, b);
 #define mn3(a, b, c)            s2(a, b); s2(a, c);
 #define mx3(a, b, c)            s2(b, c); s2(a, c);
@@ -264,6 +280,26 @@ void median_sort_data_3x3(float v[9]) {
     mnmx3(v[3], v[4], v[8]);
 }
 
+void median_sort_data_3x3x2(float2 v[9]) {
+    float2 temp;
+
+    // Starting with a subset of size 6, remove the min and max each time
+    mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);
+    mnmx5(v[1], v[2], v[3], v[4], v[6]);
+    mnmx4(v[2], v[3], v[4], v[7]);
+    mnmx3(v[3], v[4], v[8]);
+}
+
+void median_sort_data_3x3x3(float3 v[9]) {
+    float3 temp;
+
+    // Starting with a subset of size 6, remove the min and max each time
+    mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);
+    mnmx5(v[1], v[2], v[3], v[4], v[6]);
+    mnmx4(v[2], v[3], v[4], v[7]);
+    mnmx3(v[3], v[4], v[8]);
+}
+
 #undef s2
 #undef mn3
 #undef mx3
@@ -273,10 +309,17 @@ void median_sort_data_3x3(float v[9]) {
 #undef mnmx5
 #undef mnmx6
 
-float median_filter_3x3(image2d_t inputImage, int2 imageCoordinates) {
-    float v[9];
-    median_load_data_3x3(v, inputImage, imageCoordinates);
-    median_sort_data_3x3(v);
+float3 median_filter_3x3(image2d_t inputImage, int2 imageCoordinates) {
+    float3 v[9];
+    median_load_data_3x3x3(v, inputImage, imageCoordinates);
+    median_sort_data_3x3x3(v);
+    return v[4];
+}
+
+float2 median_filter_3x3_chroma(image2d_t inputImage, int2 imageCoordinates) {
+    float2 v[9];
+    median_load_data_3x3_chroma(v, inputImage, imageCoordinates);
+    median_sort_data_3x3x2(v);
     return v[4];
 }
 
@@ -334,6 +377,7 @@ kernel void despeckleYCbCrImage(read_only image2d_t inputImage, write_only image
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
     float denoisedLuma = despeckle_3x3(inputImage, imageCoordinates);
+    // float2 denoisedChroma = median_filter_3x3_chroma(inputImage, imageCoordinates);
 
     float3 pixel = read_imagef(inputImage, imageCoordinates).xyz;
     write_imagef(denoisedImage, imageCoordinates, (float4) (denoisedLuma, pixel.yz, 0.0));
@@ -350,10 +394,10 @@ kernel void despeckleLumaImage(read_only image2d_t inputImage, write_only image2
 kernel void medianFilterImage(read_only image2d_t inputImage, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float denoisedLuma = median_filter_3x3(inputImage, imageCoordinates);
+    float2 denoisedPixel = median_filter_3x3_chroma(inputImage, imageCoordinates);
 
-    float3 pixel = read_imagef(inputImage, imageCoordinates).xyz;
-    write_imagef(denoisedImage, imageCoordinates, (float4) (denoisedLuma, pixel.yz, 0.0));
+    float luma = read_imagef(inputImage, imageCoordinates).x;
+    write_imagef(denoisedImage, imageCoordinates, (float4) (luma, denoisedPixel, 0.0));
 }
 
 /// ---- Image Denoising ----
@@ -369,11 +413,19 @@ kernel void transformImage(read_only image2d_t inputImage, write_only image2d_t 
     write_imagef(outputImage, imageCoordinates, (float4) (outputPixel, 0.0));
 }
 
-float3 denoiseLumaChromaTight(float3 sigma, image2d_t inputImage, int2 imageCoordinates) {
+float3 denoiseLumaChromaTight(float3 sigma_a, float3 sigma_b, image2d_t inputImage, int2 imageCoordinates) {
     const float3 inputYCC = read_imagef(inputImage, imageCoordinates).xyz;
 
-    // NLF For the Y channel, Cb and Cr are constant wrt intensity
-    sigma.x *= sqrt(inputYCC.x);
+    float3 sigma = sqrt(sigma_a + sigma_b * inputYCC.x);
+
+    // TODO: make this a calibration parameter
+//    // Decrease denoising on edges
+//    float dx = (read_imagef(inputImage, imageCoordinates + (int2)(1, 0)).x -
+//                read_imagef(inputImage, imageCoordinates - (int2)(1, 0)).x) / 2;
+//    float dy = (read_imagef(inputImage, imageCoordinates + (int2)(0, 1)).x -
+//                read_imagef(inputImage, imageCoordinates - (int2)(0, 1)).x) / 2;
+//    float sigmaBoost = smoothstep(0.5 * sigma.x, 2 * sigma.x, length((float2) (dx, dy)));
+//    sigma *= 1 - 0.5 * sigmaBoost;
 
     float3 filtered_pixel = 0;
     float3 kernel_norm = 0;
@@ -391,19 +443,27 @@ float3 denoiseLumaChromaTight(float3 sigma, image2d_t inputImage, int2 imageCoor
     return filtered_pixel / kernel_norm;
 }
 
-kernel void denoiseImageTight(read_only image2d_t inputImage, float3 sigma, write_only image2d_t denoisedImage) {
+kernel void denoiseImageTight(read_only image2d_t inputImage, float3 sigma_a, float3 sigma_b, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float3 denoisedPixel = denoiseLumaChromaTight(sigma, inputImage, imageCoordinates);
+    float3 denoisedPixel = denoiseLumaChromaTight(sigma_a, sigma_b, inputImage, imageCoordinates);
 
     write_imagef(denoisedImage, imageCoordinates, (float4) (denoisedPixel, 0.0));
 }
 
-float3 denoiseLumaChromaLoose(float3 sigma, image2d_t inputImage, int2 imageCoordinates) {
+float3 denoiseLumaChromaLoose(float3 sigma_a, float3 sigma_b, image2d_t inputImage, int2 imageCoordinates) {
     const float3 inputYCC = read_imagef(inputImage, imageCoordinates).xyz;
 
-    // NLF For the Y channel, Cb and Cr are constant wrt intensity
-    sigma.x *= sqrt(inputYCC.x);
+    float3 sigma = sqrt(sigma_a + sigma_b * inputYCC.x);
+
+    // TODO: make this a calibration parameter
+//    // Decrease denoising on edges
+//    float dx = (read_imagef(inputImage, imageCoordinates + (int2)(1, 0)).x -
+//                read_imagef(inputImage, imageCoordinates - (int2)(1, 0)).x) / 2;
+//    float dy = (read_imagef(inputImage, imageCoordinates + (int2)(0, 1)).x -
+//                read_imagef(inputImage, imageCoordinates - (int2)(0, 1)).x) / 2;
+//    float sigmaBoost = smoothstep(0.5 * sigma.x, 2 * sigma.x, length((float2) (dx, dy)));
+//    sigma *= 1 - 0.5 * sigmaBoost;
 
     float3 filtered_pixel = 0;
     float3 kernel_norm = 0;
@@ -421,16 +481,18 @@ float3 denoiseLumaChromaLoose(float3 sigma, image2d_t inputImage, int2 imageCoor
     return filtered_pixel / kernel_norm;
 }
 
-kernel void denoiseImageLoose(read_only image2d_t inputImage, float3 sigma, write_only image2d_t denoisedImage) {
+kernel void denoiseImageLoose(read_only image2d_t inputImage, float3 sigma_a, float3 sigma_b, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float3 denoisedPixel = denoiseLumaChromaLoose(sigma, inputImage, imageCoordinates);
+    float3 denoisedPixel = denoiseLumaChromaLoose(sigma_a, sigma_b, inputImage, imageCoordinates);
 
     write_imagef(denoisedImage, imageCoordinates, (float4) (denoisedPixel, 0.0));
 }
 
-float3 denoiseLumaChromaGuided(float3 eps, image2d_t inputImage, int2 imageCoordinates) {
+float3 denoiseLumaChromaGuided(float3 var_a, float3 var_b, image2d_t inputImage, int2 imageCoordinates) {
     const float3 input = read_imagef(inputImage, imageCoordinates).xyz;
+
+    float3 eps = var_a + var_b * input.x;
 
     const int radius = 2;
     const float norm = 1.0 / ((2 * radius + 1) * (2 * radius + 1));
@@ -469,7 +531,7 @@ float3 denoiseLumaChromaGuided(float3 eps, image2d_t inputImage, int2 imageCoord
     float var_I_gb = mean_I_gb - mean_I.y * mean_I.z;
     float var_I_bb = mean_I_bb - mean_I.z * mean_I.z;
 
-    float var_I_rr_eps = var_I_rr + eps.x * input.x;
+    float var_I_rr_eps = var_I_rr + eps.x;
     float var_I_gg_eps = var_I_gg + eps.y;
     float var_I_bb_eps = var_I_bb + eps.z;
 
@@ -505,10 +567,10 @@ float3 denoiseLumaChromaGuided(float3 eps, image2d_t inputImage, int2 imageCoord
     return a_r * input.x + a_g * input.y + a_b * input.z + b;
 }
 
-kernel void denoiseImageGuided(read_only image2d_t inputImage, float3 eps, write_only image2d_t denoisedImage) {
+kernel void denoiseImageGuided(read_only image2d_t inputImage, float3 var_a, float3 var_b, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float3 denoisedPixel = denoiseLumaChromaGuided(eps, inputImage, imageCoordinates);
+    float3 denoisedPixel = denoiseLumaChromaGuided(var_a, var_b, inputImage, imageCoordinates);
 
     write_imagef(denoisedImage, imageCoordinates, (float4) (denoisedPixel, 0.0));
 }
@@ -527,7 +589,7 @@ kernel void downsampleImage(read_only image2d_t inputImage, write_only image2d_t
 }
 
 kernel void reassembleImage(read_only image2d_t inputImageDenoised0, read_only image2d_t inputImage1,
-                            read_only image2d_t inputImageDenoised1, float sharpening, float lumaSigma,
+                            read_only image2d_t inputImageDenoised1, float sharpening, float2 nlf,
                             write_only image2d_t outputImage, sampler_t linear_sampler) {
     const int2 output_pos = (int2) (get_global_id(0), get_global_id(1));
     const float2 inputNorm = 1.0 / convert_float2(get_image_dim(outputImage));
@@ -537,22 +599,22 @@ kernel void reassembleImage(read_only image2d_t inputImageDenoised0, read_only i
     float3 inputPixel1 = read_imagef(inputImage1, linear_sampler, input_pos).xyz;
     float3 inputPixelDenoised1 = read_imagef(inputImageDenoised1, linear_sampler, input_pos).xyz;
 
-//    float dx = read_imagef(inputImageDenoised0, output_pos + (int2)(1, 0)).x - inputPixelDenoised0.x;
-//    float dy = read_imagef(inputImageDenoised0, output_pos + (int2)(0, 1)).x - inputPixelDenoised0.x;
-//    float threshold = 4 * lumaSigma * sqrt(inputPixelDenoised0.x);
-//    float detail = smoothstep(0.5 * threshold, 2 * threshold, length((float2) (dx, dy)));
-
     float3 denoisedPixel = inputPixelDenoised0 - (inputPixel1 - inputPixelDenoised1);
 
-//    // Smart sharpening
-//    float amount = sharpening * detail                                                  // Gradient magnitude thresholding
-//                              * (1.0 - smoothstep(0.95, 1.0, denoisedPixel.x))          // Highlights ringing protection
-//                              * (0.6 + 0.4 * smoothstep(0.0, 0.1, denoisedPixel.x));    // Shadows ringing protection
-//
-//    // Only sharpen the luma channel
-//    denoisedPixel.x = mix(inputPixelDenoised1.x, denoisedPixel.x, amount < 1.0f ? max(amount, sharpening) : amount);
+    if (sharpening > 1.0) {
+        float dx = (read_imagef(inputImageDenoised1, linear_sampler, input_pos + (float2)(1, 0) * inputNorm).x -
+                    read_imagef(inputImageDenoised1, linear_sampler, input_pos - (float2)(1, 0) * inputNorm).x) / 2;
+        float dy = (read_imagef(inputImageDenoised1, linear_sampler, input_pos + (float2)(0, 1) * inputNorm).x -
+                    read_imagef(inputImageDenoised1, linear_sampler, input_pos - (float2)(0, 1) * inputNorm).x) / 2;
 
-    denoisedPixel.x = inputPixelDenoised1.x + (denoisedPixel.x - inputPixelDenoised1.x) * sharpening; // mix(inputPixelDenoised1.x, denoisedPixel.x, sharpening);
+        float threshold = 0.25 * sqrt(nlf.x + nlf.y * inputPixelDenoised1.x);
+        float detail = smoothstep(0.25 * threshold, threshold, length((float2) (dx, dy)))
+                       * (1.0 - smoothstep(0.95, 1.0, denoisedPixel.x))          // Highlights ringing protection
+                       * (0.6 + 0.4 * smoothstep(0.0, 0.1, denoisedPixel.x));    // Shadows ringing protection
+        sharpening = 1 + (sharpening - 1) * detail;
+    }
+
+    denoisedPixel.x = mix(inputPixelDenoised1.x, denoisedPixel.x, sharpening);
 
     write_imagef(outputImage, output_pos, (float4) (denoisedPixel, 0.0));
 }
@@ -739,6 +801,91 @@ kernel void despeckleRawRGBAImage(read_only image2d_t inputImage, write_only ima
     write_imagef(denoisedImage, imageCoordinates, despeckledPixel);
 }
 
+kernel void sobelFilterImage(read_only image2d_t inputImage, write_only image2d_t outputImage) {
+    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
+
+    constant float sobelX[3][3] = {
+        { -1, -2, -1 },
+        {  0,  0,  0 },
+        {  1,  2,  1 },
+    };
+    constant float sobelY[3][3] = {
+        { -1,  0,  1 },
+        { -2,  0,  2 },
+        { -1,  0,  1 },
+    };
+
+    float3 valueX = 0;
+    float3 valueY = 0;
+    for (int y = 0; y < 3; y++) {
+        for (int x = 0; x < 3; x++) {
+            float3 sample = read_imagef(inputImage, imageCoordinates + (int2)(x - 1, y - 1)).xyz;
+            valueX += sobelX[y][x] * sample;
+            valueY += sobelY[y][x] * sample;
+        }
+    }
+
+    write_imagef(outputImage, imageCoordinates, (float4) (sqrt(valueX * valueX + valueY * valueY), 0));
+}
+
+kernel void desaturateEdges(read_only image2d_t inputImage, write_only image2d_t outputImage) {
+    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
+
+    float d2x = read_imagef(inputImage, imageCoordinates + (int2)(-1, 0)).x -
+                2 * read_imagef(inputImage, imageCoordinates + (int2)(0, 0)).x +
+                read_imagef(inputImage, imageCoordinates + (int2)( 1, 0)).x;
+
+    float d2y = read_imagef(inputImage, imageCoordinates + (int2)(0, -1)).x -
+                2 * read_imagef(inputImage, imageCoordinates + (int2)(0, 0)).x +
+                read_imagef(inputImage, imageCoordinates + (int2)(0,  1)).x;
+
+    float3 pixel = read_imagef(inputImage, imageCoordinates).xyz;
+    float desaturate = 1 - smoothstep(0.25, 0.5, 50 * (d2x * d2x + d2y * d2y));
+
+    write_imagef(outputImage, imageCoordinates, (float4) (pixel.x, desaturate * pixel.yz, 0));
+}
+
+kernel void laplacianFilterImage(read_only image2d_t inputImage, write_only image2d_t outputImage) {
+    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
+
+    constant float laplacian[3][3] = {
+        {  1, -2,  1 },
+        { -2,  4, -2 },
+        {  1, -2,  1 },
+    };
+
+    float3 value = 0;
+    for (int y = 0; y < 3; y++) {
+        for (int x = 0; x < 3; x++) {
+            float3 sample = read_imagef(inputImage, imageCoordinates + (int2)(x - 1, y - 1)).xyz;
+            value += laplacian[y][x] * sample;
+        }
+    }
+
+    write_imagef(outputImage, imageCoordinates, (float4) (value, 0));
+}
+
+kernel void noiseStatistics(read_only image2d_t inputImage, write_only image2d_t outputImage) {
+    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
+
+    int radius = 5;
+    int count = (2 * radius + 1) * (2 * radius + 1);
+
+    float3 sum = 0;
+    float3 sumSq = 0;
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
+            float3 inputSample = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
+            sum += inputSample;
+            sumSq += inputSample * inputSample;
+        }
+    }
+    float3 mean = sum / count;
+    float3 var = (sumSq - (sum * sum) / count) / count;
+
+    write_imagef(outputImage, imageCoordinates, (float4) (mean.x, var));
+}
+
 /// ---- Image Sharpening ----
 
 float3 gaussianBlur(float radius, image2d_t inputImage, int2 imageCoordinates) {
@@ -791,6 +938,13 @@ float3 saturationBoost(float3 value, float saturation) {
     return mix(luma, value, mix(saturation, 1.0, clipping));
 }
 
+float3 desaturateBlacks(float3 value) {
+    // Saturation boost with highlight protection
+    const float luma = 0.2126 * value.x + 0.7152 * value.y + 0.0722 * value.z; // BT.709-2 (sRGB) luma primaries
+    const float desaturate = smoothstep(0.005, 0.04, luma);
+    return mix(luma, value, desaturate);
+}
+
 float3 contrastBoost(float3 value, float contrast) {
     const float gray = 0.2;
     const float3 clipping = smoothstep(0.9, 2.0, value);
@@ -811,6 +965,7 @@ kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t 
     float3 pixel_value = read_imagef(linearImage, imageCoordinates).xyz;
 
     // pixel_value = saturationBoost(pixel_value, rgbConversionParameters.saturation);
+    // pixel_value = desaturateBlacks(pixel_value);
     pixel_value = contrastBoost(pixel_value, rgbConversionParameters.contrast);
 
     float3 rgb = (float3) (dot(transform.m[0], pixel_value),

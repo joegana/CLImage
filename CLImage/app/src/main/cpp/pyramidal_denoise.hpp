@@ -28,7 +28,7 @@ struct ImageDenoiser {
 
     virtual void denoise(gls::OpenCLContext* glsContext,
                          const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                         const gls::Vector<3>& sigma, int pyramidLevel,
+                         const gls::Vector<3>& sigma_a, const gls::Vector<3>& sigma_b, int pyramidLevel,
                          gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) = 0;
 };
 
@@ -46,7 +46,7 @@ struct PyramidalDenoise {
     imageType* denoise(gls::OpenCLContext* glsContext, std::array<DenoiseParameters, levels>* denoiseParameters,
                        imageType* image, const gls::Matrix<3, 3>& rgb_cam,
                        const gls::rectangle* gmb_position, bool rotate_180,
-                       gls::Matrix<levels, 3>* nlfParameters);
+                       gls::Matrix<levels, 6>* nlfParameters);
 };
 
 #endif /* pyramidal_denoise_h */

@@ -122,6 +122,10 @@ add_executable(
         raw_converter.cpp
         ThreadPool.cpp
         raw_pipeline.cpp
+        IMX492Calibration.cpp
+        iPhone11Calibration.cpp
+        LeicaQ2Calibration.cpp
+        RicohGRIIICalibration.cpp
         filesystem/operations.cpp
         filesystem/directory_iterator.cpp
 )

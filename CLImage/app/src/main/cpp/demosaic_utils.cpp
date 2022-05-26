@@ -328,7 +328,7 @@ float unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
 
         // If cam_mul is available use that instead of pre_mul
         if (!as_shot_neutral.empty()) {
-            pre_mul = 1.0 / gls::Vector<3>(as_shot_neutral);
+            pre_mul = 1.0f / gls::Vector<3>(as_shot_neutral);
         }
     }
 
@@ -508,7 +508,6 @@ void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float 
 //    }
 
     static int file_count = 0;
-
     green_channel.write_png_file("/Users/fabio/green_channel" + std::to_string(file_count++) + ".png", false);
 }
 
@@ -538,8 +537,8 @@ void colorCheckerStats(gls::image<gls::rgba_pixel_float>* image, const gls::rect
                 for (int x = 0; x < patch.width; x++) {
                     const auto& p = (*image)[patch.y + y][patch.x + x];
                     avgY += p[0];
-                    avgCr += p[1];
-                    avgCb += p[2];
+                    avgCb += p[1];
+                    avgCr += p[2];
                 }
             }
 
@@ -555,8 +554,8 @@ void colorCheckerStats(gls::image<gls::rgba_pixel_float>* image, const gls::rect
                 for (int x = 0; x < patch.width; x++) {
                     const auto& p = (*image)[patch.y + y][patch.x + x];
                     varY += square(p[0] - avgY);
-                    varCr += square(p[1] - avgCb);
-                    varCb += square(p[2] - avgCr);
+                    varCb += square(p[1] - avgCb);
+                    varCr += square(p[2] - avgCr);
 
                     (*image)[patch.y + y][patch.x + x] = {0, 0, 0, 0};
                 }
@@ -646,8 +645,8 @@ gls::Vector<3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* image, c
 
 //    std::cout << "NLF Stats:" << std::endl;
 //    for (int patch = Black; patch >= White; patch--) {
-//        std::cout << std::setprecision(4) << std::setw(4) << stats[patch].mean[0] << "\t"
-//                  << stats[patch].variance[0] << "\t" << stats[patch].variance[1] << "\t" << stats[patch].variance[2] << std::endl;
+//        std::cout << std::setw(12) << std::setfill(' ') << GMBColorNames[patch] << ": " << std::setprecision(4) << std::scientific << stats[patch].mean[0] << ", "
+//                  << stats[patch].variance[0] << ", " << stats[patch].variance[1] << ", " << stats[patch].variance[2] << std::endl;
 //    }
 
     float y_err2;
@@ -655,9 +654,9 @@ gls::Vector<3> estimateNlfParameters(gls::image<gls::rgba_pixel_float>* image, c
     auto nlf_cb = std::accumulate(cb_variance.begin(), cb_variance.end(), 0.0f) / cb_variance.size();
     auto nlf_cr = std::accumulate(cr_variance.begin(), cr_variance.end(), 0.0f) / cr_variance.size();
 
-//    std::cout << std::setprecision(4) << std::setw(4)
-//              << "nlf_y: " << nlf_y.first << ":" << nlf_y.second << " (" << y_err2 << ")"
-//              << ", nlf_cb: " << nlf_cb << ", nlf_cr: " << nlf_cr << std::endl;
+    std::cout << std::setprecision(4) << std::scientific
+              << "\nnlf_y: " << nlf_y.first << ":" << nlf_y.second << " (" << y_err2 << ")"
+              << ", nlf_cb: " << nlf_cb << ", nlf_cr: " << nlf_cr << std::endl;
 
     // NFL for Y passes by 0, just use the slope, NFL for Cb and and Cr is mostly flat, just return the average
     return {nlf_y.second, nlf_cb, nlf_cr};
@@ -749,13 +748,13 @@ gls::Vector<4> estimateRawParameters(const gls::image<gls::luma_pixel_16>& rawIm
     auto nlf_b = linear_regression(blue_intensity, blue_variance, &b_err2);
     auto nlf_g2 = linear_regression(green2_intensity, green2_variance, &g2_err2);
 
-//    std::cout << std::setprecision(4) << std::setw(4)
+//    std::cout << std::setprecision(2) << std::scientific
 //              << "raw nlf_r: " << nlf_r.first << ":" << nlf_r.second << " (" << r_err2 << "), "
 //              << "raw nlf_g: " << nlf_g.first << ":" << nlf_g.second << " (" << g_err2 << "), "
 //              << "raw nlf_b: " << nlf_b.first << ":" << nlf_b.second << " (" << b_err2 << "), "
 //              << "raw nlf_g2: " << nlf_g2.first << ":" << nlf_g2.second << " (" << g2_err2 << ")" << std::endl;
 
-    std::cout << std::setprecision(4) << std::scientific << "raw nlf (r g b g2): "
+    std::cout << std::setprecision(2) << std::scientific << "raw nlf (r g b g2): "
               << nlf_r.second << ", "
               << nlf_g.second << ", "
               << nlf_b.second << ", "
@@ -831,7 +830,7 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
             ycbcrAverage += ycbcr;
         }
     }
-    ycbcrAverage /= ycbcrImage.width * ycbcrImage.height;
+    ycbcrAverage /= (float) ycbcrImage.width * ycbcrImage.height;
 
     // Compute the ycbcr average absolute differences
     gls::Vector<3> ycbcrDiffAverage = { 0, 0, 0 };
@@ -840,7 +839,7 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
             ycbcrDiffAverage += abs(gls::Vector<3>(ycbcrImage[y][x].v) - ycbcrAverage);
         }
     }
-    ycbcrDiffAverage /= ycbcrImage.width * ycbcrImage.height;
+    ycbcrDiffAverage /= (float) ycbcrImage.width * ycbcrImage.height;
 
     std::array<std::pair<gls::Vector<3>, int>, 128> rgbWhiteAverageHist = { };
 
@@ -897,7 +896,7 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
             break;
         }
     }
-    rgbWhite90Average /= white90PixelsCount;
+    rgbWhite90Average /= (float) white90PixelsCount;
 
     std::cout << "histMaxEntry: " << histMaxEntry << ", white90PixelsCount: " << white90PixelsCount << ", whitePixelsCount: " << whitePixelsCount << std::endl;
 
@@ -945,8 +944,8 @@ gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, 
             }
         }
     }
-    wbGain /= wbCount;
-    wbGain /= wbGain[0];
+    wbGain /= (float) wbCount;
+    wbGain /= (float) wbGain[0];
 
     auto t_end = std::chrono::high_resolution_clock::now();
     double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();

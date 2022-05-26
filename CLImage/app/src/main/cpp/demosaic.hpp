@@ -42,8 +42,8 @@ typedef struct RGBConversionParameters {
 } RGBConversionParameters;
 
 typedef struct NoiseModel {
-    gls::Vector<4> rawNlf;
-    gls::Matrix<5, 3> pyramidNlf;
+    gls::Vector<4> rawNlf;          // NLF for raw data
+    gls::Matrix<5, 6> pyramidNlf;   // NLF for interpolated data on a 5-level pyramid
 } NoiseModel;
 
 typedef struct DemosaicParameters {
@@ -57,6 +57,8 @@ typedef struct DemosaicParameters {
     // Noise Estimation and Reduction parameters
     NoiseModel noiseModel;
     std::array<DenoiseParameters, 5> denoiseParameters;
+    // In the [0..1] range, used to scale various denoising coefficients
+    float noiseLevel;
 
     // Camera Color Space to RGB Parameters
     RGBConversionParameters rgbConversionParameters;
@@ -105,10 +107,10 @@ inline static gls::Vector<4> lerpRawNLF(const gls::Vector<4>& NLFData0, const gl
 }
 
 template <int levels>
-gls::Matrix<levels, 3> lerpNLF(const gls::Matrix<levels, 3>& NLFData0, const gls::Matrix<levels, 3>& NLFData1, float a) {
-    gls::Matrix<levels, 3> result;
+gls::Matrix<levels, 6> lerpNLF(const gls::Matrix<levels, 6>& NLFData0, const gls::Matrix<levels, 6>& NLFData1, float a) {
+    gls::Matrix<levels, 6> result;
     for (int j = 0; j < levels; j++) {
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 6; i++) {
             result[j][i] = std::lerp(NLFData0[j][i], NLFData1[j][i], a);
         }
     }

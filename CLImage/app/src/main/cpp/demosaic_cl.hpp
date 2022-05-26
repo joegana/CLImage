@@ -20,10 +20,10 @@
 
 #include "gls_cl_image.hpp"
 
-template <typename T>
+template <typename T1, typename T2>
 void applyKernel(gls::OpenCLContext* glsContext, const std::string& kernelName,
-                 const gls::cl_image_2d<T>& inputImage,
-                 gls::cl_image_2d<T>* outputImage);
+                 const gls::cl_image_2d<T1>& inputImage,
+                 gls::cl_image_2d<T2>* outputImage);
 
 void scaleRawData(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::luma_pixel_16>& rawImage,
@@ -53,7 +53,7 @@ void resampleImage(gls::OpenCLContext* glsContext, const std::string& kernelName
 template <typename T>
 void reassembleImage(gls::OpenCLContext* glsContext, const gls::cl_image_2d<T>& inputImageDenoised0,
                      const gls::cl_image_2d<T>& inputImage1, const gls::cl_image_2d<T>& inputImageDenoised1,
-                     float sharpening, float lumaSigma, gls::cl_image_2d<T>* outputImage);
+                     float sharpening, gls::Vector<2> nlf, gls::cl_image_2d<T>* outputImage);
 
 void transformImage(gls::OpenCLContext* glsContext,
                     const gls::cl_image_2d<gls::rgba_pixel_float>& linearImage,
@@ -67,12 +67,12 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
 
 void denoiseImage(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                  const gls::Vector<3>& sigma, bool tight,
+                  const gls::Vector<3>& sigma_a, const gls::Vector<3>& sigma_b, bool tight,
                   gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
 
 void denoiseImageGuided(gls::OpenCLContext* glsContext,
                         const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                        const gls::Vector<3>& eps,
+                        const gls::Vector<3>& var_a, const gls::Vector<3>& var_b,
                         gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
 
 void denoiseLumaImage(gls::OpenCLContext* glsContext,

@@ -111,10 +111,8 @@ inline static void unpackTo16Bits(uint16_t *out, const uint16_t *in, int bitsper
     }
 }
 */
-
 static void readTiffImageData(TIFF *tif, int width, int height, int tiff_bitspersample, int tiff_samplesperpixel,
-                       std::function<void(int tiff_bitspersample, int tiff_samplesperpixel, int row, int strip_height,
-                                          uint8_t *tiff_buffer)> process_tiff_strip) {
+                              tiff_strip_procesor process_tiff_strip) {
     size_t stripSize = TIFFStripSize(tif);
     auto_ptr<uint8_t> tiffbuf((uint8_t*)_TIFFmalloc(stripSize),
                               [](uint8_t* tiffbuf) { _TIFFfree(tiffbuf); });
@@ -141,13 +139,16 @@ static void readTiffImageData(TIFF *tif, int width, int height, int tiff_bitsper
             if (tiff_bitspersample == 12) {
                 unpack12BitsInto16Bits((uint16_t*) decodedBuffer.get(), (uint16_t*) tiffbuf.get(), stripSize / sizeof(uint16_t));
 
-                process_tiff_strip(/* tiff_bitspersample=*/ 16, tiff_samplesperpixel, row, nrow, decodedBuffer);
+                process_tiff_strip(/* tiff_bitspersample=*/ 16, tiff_samplesperpixel, row,
+                                   /*strip_width=*/ width, /*strip_height=*/ nrow, /*crop_x=*/ 0, /*crop_y=*/ 0, decodedBuffer);
             } else if (tiff_bitspersample == 14) {
                 unpack14BitsInto16Bits((uint16_t*) decodedBuffer.get(), (uint16_t*) tiffbuf.get(), stripSize / sizeof(uint16_t));
 
-                process_tiff_strip(/* tiff_bitspersample=*/ 16, tiff_samplesperpixel, row, nrow, decodedBuffer);
+                process_tiff_strip(/* tiff_bitspersample=*/ 16, tiff_samplesperpixel, row,
+                                   /*strip_width=*/ width, /*strip_height=*/ nrow, /*crop_x=*/ 0, /*crop_y=*/ 0, decodedBuffer);
             } else if (tiff_bitspersample == 16) {
-                process_tiff_strip(/* tiff_bitspersample=*/ 16, tiff_samplesperpixel, row, nrow, tiffbuf);
+                process_tiff_strip(/* tiff_bitspersample=*/ 16, tiff_samplesperpixel, row,
+                                   /*strip_width=*/ width, /*strip_height=*/ nrow, /*crop_x=*/ 0, /*crop_y=*/ 0, tiffbuf);
             } else {
                 throw std::runtime_error("tiff_bitspersample " + std::to_string(tiff_bitspersample) + " not supported.");
             }
@@ -159,8 +160,7 @@ static void readTiffImageData(TIFF *tif, int width, int height, int tiff_bitsper
 
 void read_tiff_file(const std::string& filename, int pixel_channels, int pixel_bit_depth, tiff_metadata* metadata,
                     std::function<bool(int width, int height)> image_allocator,
-                    std::function<void(int tiff_bitspersample, int tiff_samplesperpixel, int row, int strip_height,
-                                       uint8_t *tiff_buffer)> process_tiff_strip) {
+                    tiff_strip_procesor process_tiff_strip) {
     auto_ptr<TIFF> tif(TIFFOpen(filename.c_str(), "r"),
                        [](TIFF *tif) { TIFFClose(tif); });
 
@@ -250,9 +250,8 @@ void write_tiff_file(const std::string& filename, int width, int height, int pix
 }
 
 void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bit_depth, gls::tiff_metadata* dng_metadata, gls::tiff_metadata* exif_metadata,
-                    std::function<bool(int width, int height)> image_allocator,
-                    std::function<void(int tiff_bitspersample, int tiff_samplesperpixel, int row, int strip_height,
-                                       uint8_t *tiff_buffer)> process_tiff_strip) {
+                   std::function<bool(int width, int height)> image_allocator,
+                   tiff_strip_procesor process_tiff_strip) {
     augment_libtiff_with_custom_tags();
 
     auto_ptr<TIFF> tif(TIFFOpen(filename.c_str(), "r"),
@@ -314,6 +313,27 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
         TIFFGetField(tif, TIFFTAG_IMAGEWIDTH, &width);
         TIFFGetField(tif, TIFFTAG_IMAGELENGTH, &height);
         printf("width: %d, height: %d\n", width, height);
+        uint32_t image_width = width;
+        uint32_t image_height = height;
+
+        const auto crop_origin = getVector<float>(*dng_metadata, TIFFTAG_DEFAULTCROPORIGIN);
+        const auto crop_size = getVector<float>(*dng_metadata, TIFFTAG_DEFAULTCROPSIZE);
+        const auto active_area = getVector<uint32_t>(*dng_metadata, TIFFTAG_ACTIVEAREA);
+
+        if (!crop_size.empty()) {
+            image_width = crop_size[0];
+            image_height = crop_size[1];
+        }
+        int crop_x = 0;
+        int crop_y = 0;
+        if (!crop_origin.empty()) {
+            crop_x = crop_origin[0];
+            crop_y = crop_origin[1];
+        }
+        if (!active_area.empty()) {
+            crop_x += active_area[1];
+            crop_y += active_area[0];
+        }
 
         uint16_t orientation;
         TIFFGetField(tif, TIFFTAG_ORIENTATION, &orientation);
@@ -322,7 +342,7 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
             dng_metadata->insert({ TIFFTAG_ORIENTATION, orientation });
         }
 
-        auto allocation_successful = image_allocator(width, height);
+        auto allocation_successful = image_allocator(image_width, image_height);
         if (allocation_successful) {
             printf("TIFFIsTiled: %d\n", TIFFIsTiled(tif));
 
@@ -371,7 +391,10 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
                     }
 
                     // The output of the JPEG decoder is always 16 bits
-                    process_tiff_strip(/*tiff_bitspersample=*/ 16, tiff_samplesperpixel, 0, height, (uint8_t *) imagebuf.get());
+                    process_tiff_strip(/*tiff_bitspersample=*/ 16, tiff_samplesperpixel, 0,
+                                       /*strip_width=*/ width, /*strip_height=*/ height,
+                                       /*crop_x=*/ crop_x, /*crop_y=*/ crop_y,
+                                       (uint8_t *) imagebuf.get());
                 } else {
                     throw std::runtime_error("Not implemented yet...");
                 }
@@ -410,7 +433,10 @@ void read_dng_file(const std::string& filename, int pixel_channels, int pixel_bi
                                            false, stripsize);
 
                         // The output of the JPEG decoder is always 16 bits
-                        process_tiff_strip(/*tiff_bitspersample=*/ 16, tiff_samplesperpixel, 0, height, (uint8_t *) spooler.data());
+                        process_tiff_strip(/*tiff_bitspersample=*/ 16, tiff_samplesperpixel, /*row=*/ 0,
+                                           /*strip_width=*/ width, /*strip_height=*/ height,
+                                           /*crop_x=*/ crop_x, /*crop_y=*/ crop_y,
+                                           (uint8_t *) spooler.data());
                     }
                     _TIFFfree(tiffbuf);
                 } else {
