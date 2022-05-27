@@ -42,6 +42,8 @@ void RawConverter::allocateFastDemosaicTextures(gls::OpenCLContext* glsContext, 
     auto clContext = glsContext->clContext();
 
     if (!clFastLinearRGBImage) {
+        clRawImage = std::make_unique<gls::cl_image_2d<gls::luma_pixel_16>>(clContext, width, height);
+        clScaledRawImage = std::make_unique<gls::cl_image_2d<gls::luma_pixel_float>>(clContext, width, height);
         clFastLinearRGBImage = std::make_unique<gls::cl_image_2d<gls::rgba_pixel_float>>(clContext, width/2, height/2);
         clsFastRGBImage = std::make_unique<gls::cl_image_2d<gls::rgba_pixel>>(clContext, width/2, height/2);
     }
@@ -152,6 +154,13 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::fastDemosaicImage(const gls::im
     allocateFastDemosaicTextures(_glsContext, rawImage.width, rawImage.height);
 
     LOG_INFO(TAG) << "Begin Fast Demosaicing (GPU)..." << std::endl;
+
+    // Copy input data to the OpenCL input buffer
+    auto cpuRawImage = clRawImage->mapImage();
+    for (int y = 0; y < clRawImage->height; y++) {
+        std::copy(rawImage[y], &rawImage[y][clRawImage->width], cpuRawImage[y]);
+    }
+    clRawImage->unmapImage(cpuRawImage);
 
     // --- Image Demosaicing ---
 
