@@ -273,5 +273,6 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(RawConverter* rawConver
     demosaicParameters.noiseLevel = denoiseParameters.first;
     demosaicParameters.denoiseParameters = denoiseParameters.second;
 
-    return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, &demosaicParameters, nullptr, /*rotate_180=*/ true));
+    // return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, &demosaicParameters, nullptr, /*rotate_180=*/ true));
+    return RawConverter::convertToRGBImage(*rawConverter->fastDemosaicImage(*inputImage, demosaicParameters));
 }
