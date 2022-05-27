@@ -336,9 +336,16 @@ float unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
     std::cout << "*** pre_mul: " << pre_mul / pre_mul[1] << std::endl;
 
     if (auto_white_balance) {
+        auto minmax = std::minmax_element(std::begin(pre_mul), std::end(pre_mul));
+        for (int c = 0; c < 4; c++) {
+            int pre_mul_idx = c == 3 ? 1 : c;
+            (demosaicParameters->scale_mul)[c] = exposure_multiplier * (pre_mul[pre_mul_idx] / *minmax.first) * 65535.0 / (demosaicParameters->white_level - demosaicParameters->black_level);
+        }
+
         auto cam_to_ycbcr = cam_ycbcr(demosaicParameters->rgb_cam);
         gls::Vector<3> cam_mul = autoWhiteBalance(rawImage, cam_to_ycbcr,
-                                                  demosaicParameters->white_level, demosaicParameters->black_level, demosaicParameters->bayerPattern);
+                                                  demosaicParameters->scale_mul, demosaicParameters->white_level,
+                                                  demosaicParameters->black_level, demosaicParameters->bayerPattern);
 
         printf("Auto White Balance: %f, %f, %f\n", cam_mul[0], cam_mul[1], cam_mul[2]);
 
@@ -806,31 +813,72 @@ struct WhiteBalanceStats {
     int whitePixelsCount;
 };
 
-WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
-                                         float white, float black, BayerPattern bayerPattern, float highlightsFraction) {
+const gls::Matrix<3, 3> srgb_ycbcr = {
+    {  0.2126,  0.7152,  0.0722 },
+    { -0.1146, -0.3854,  0.5    },
+    {  0.5,    -0.4542, -0.0458 }
+};
+
+const gls::Matrix<3, 3> ycbcr_srgb = {
+    { 1,  0,       1.5748, },
+    { 1, -0.1873, -0.4681, },
+    { 1,  1.8556,  0       }
+};
+
+gls::Vector<3> readQuad(const gls::image<gls::luma_pixel_16>& rawImage, int x, int y, BayerPattern bayerPattern) {
     const auto& offsets = bayerOffsets[bayerPattern];
     const auto& Or  = offsets[0];
     const auto& Og1 = offsets[1];
     const auto& Ob  = offsets[2];
     const auto& Og2 = offsets[3];
 
+    return {
+        (float) rawImage[y + Or.y][x + Or.x],
+        ((float) rawImage[y + Og1.y][x + Og1.x] +
+         (float) rawImage[y + Og2.y][x + Og2.x]) / 2.0f,
+        (float) rawImage[y + Ob.y][x + Ob.x]
+    };
+}
+
+WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
+                                         const gls::Vector<4>& scale_mul4, float white, float black, BayerPattern bayerPattern,
+                                         float highlightsFraction) {
+    const gls::Vector<3> scale_mul = { scale_mul4[0], scale_mul4[1], scale_mul4[2] };
+
+    const float max_white = 0.9;
+
     // Compute the average ycbcr values
     gls::Vector<3> ycbcrAverage = { 0, 0, 0 };
+    int pixelCount = 0;
     gls::image<gls::rgb_pixel_fp32> ycbcrImage(rawImage.width / 2, rawImage.height / 2);
     for (int y = 0; y < rawImage.height; y += 2) {
         for (int x = 0; x < rawImage.width; x += 2) {
-            const auto rgb = gls::Vector<3> {
-                (float) rawImage[y + Or.y][x + Or.x],
-                ((float) rawImage[y + Og1.y][x + Og1.x] +
-                 (float) rawImage[y + Og2.y][x + Og2.x]) / 2,
-                (float) rawImage[y + Ob.y][x + Ob.x]
-            };
-            const auto ycbcr = ((rgb - black) / white) * rgb_ycbcr;
+            // const auto rgb = (scale_mul * (readQuad(rawImage, x, y, bayerPattern) - black)) / (float) 0xffff;
+            const auto rgb = (readQuad(rawImage, x, y, bayerPattern) - black) / white;
+
+            const auto ycbcr = rgb_ycbcr * rgb;
             ycbcrImage[y / 2][x / 2] = ycbcr;
-            ycbcrAverage += ycbcr;
+            if (ycbcr[0] < max_white) {
+                ycbcrAverage += ycbcr;
+                pixelCount++;
+            }
         }
     }
-    ycbcrAverage /= (float) ycbcrImage.width * ycbcrImage.height;
+    ycbcrAverage /= (float) pixelCount;
+
+#if DUMP_YUV_IMAGE
+    gls::image<gls::rgb_pixel> srgb8Image(ycbcrImage.width, ycbcrImage.height);
+    ycbcrImage.apply([&srgb8Image](const gls::rgb_pixel_fp32 &p, int x, int y) {
+        const auto rgb = ycbcr_srgb * gls::Vector<3>(p.v);
+        srgb8Image[y][x] = {
+            (uint8_t) std::clamp(sqrt(rgb[0]) * 255, 0.0f, 255.0f),
+            (uint8_t) std::clamp(sqrt(rgb[1]) * 255, 0.0f, 255.0f),
+            (uint8_t) std::clamp(sqrt(rgb[2]) * 255, 0.0f, 255.0f)
+        };
+    });
+    static int count = 0;
+    srgb8Image.write_jpeg_file("/Users/fabio/rgbImage" + std::to_string(count++) + ".jpg", 95);
+#endif
 
     // Compute the ycbcr average absolute differences
     gls::Vector<3> ycbcrDiffAverage = { 0, 0, 0 };
@@ -850,14 +898,11 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
             const auto& p = ycbcrImage[y][x];
 
             // Near white region pixels
-            if (fabs(p[1] - (ycbcrAverage[1] + copysign(ycbcrDiffAverage[1], ycbcrAverage[1]))) < 1.5 * ycbcrDiffAverage[1] &&
+            if (p[0] < max_white &&
+                fabs(p[1] - (ycbcrAverage[1] + copysign(ycbcrDiffAverage[1], ycbcrAverage[1]))) < 1.5 * ycbcrDiffAverage[1] &&
                 fabs(p[2] - (1.5 * ycbcrAverage[2] + copysign(ycbcrDiffAverage[2], ycbcrAverage[2]))) < 1.5 * ycbcrDiffAverage[2]) {
-                const auto rgb = gls::Vector<3> {
-                    (float) rawImage[2 * y + Or.y][2 * x + Or.x],
-                    ((float) rawImage[2 * y + Og1.y][2 * x + Og1.x] +
-                     (float) rawImage[2 * y + Og2.y][2 * x + Og2.x]) / 2,
-                    (float) rawImage[2 * y + Ob.y][2 * x + Ob.x]
-                };
+
+                const auto rgb = (readQuad(rawImage, 2 * x, 2 * y, bayerPattern) - black) / white;
 
                 float Y = p[0];
                 if (Y > YMax) {
@@ -910,9 +955,9 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
 }
 
 gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
-                                float white, float black, BayerPattern bayerPattern) {
-    const int hTiles = 8;
-    const int vTiles = 6;
+                                const gls::Vector<4>& scale_mul, float white, float black, BayerPattern bayerPattern) {
+    const int hTiles = 4;
+    const int vTiles = 3;
 
     const int tileWidth = rawImage.width / hTiles;
     const int tileHeight = rawImage.height / vTiles;
@@ -927,9 +972,9 @@ gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, 
     std::array<std::array<std::future<WhiteBalanceStats>, hTiles>, vTiles> wbGains;
     for (int y = 0; y < vTiles; y++) {
         for (int x = 0; x < hTiles; x++) {
-            wbGains[y][x] = threadPool.enqueue([x, y, tileWidth, tileHeight, rgb_ycbcr, white, black, bayerPattern, &rawImage]() -> WhiteBalanceStats {
+            wbGains[y][x] = threadPool.enqueue([x, y, tileWidth, tileHeight, rgb_ycbcr, white, black, bayerPattern, &rawImage, &scale_mul]() -> WhiteBalanceStats {
                 const auto rawTile = gls::image<gls::luma_pixel_16>(rawImage, x * tileWidth, y * tileHeight, tileWidth, tileHeight);
-                return autoWhiteBalanceKernel(rawTile, rgb_ycbcr, white, black, bayerPattern, /*highlightsFraction=*/ 0.1);
+                return autoWhiteBalanceKernel(rawTile, rgb_ycbcr, scale_mul, white, black, bayerPattern, /*highlightsFraction=*/ 0.1);
             });
         }
     }

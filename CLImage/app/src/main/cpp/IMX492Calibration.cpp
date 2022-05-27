@@ -238,16 +238,16 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(RawConverter* rawConver
 
     gls::tiff_metadata dng_metadata, exif_metadata;
     // Leaky IR
-    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.4955, -0.6760, -0.1453, -0.1341, 1.0072, 0.1269, -0.0647, 0.1987, 0.4304 } });
-    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 1.73344, 1, 1 / 1.68018 } });
+//    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.4955, -0.6760, -0.1453, -0.1341, 1.0072, 0.1269, -0.0647, 0.1987, 0.4304 } });
+//    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 1.73344, 1, 1 / 1.68018 } });
 
     // Gzikai
 //    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.6864, -0.7955, -0.3059, 0.0838, 1.0317, -0.1155, 0.0586, 0.0492, 0.3925 } });
 //    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 2.0777, 1.0000, 1 / 1.8516 } });
 
 //    // Kolari
-//    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 0.6963, -0.2447, -0.1353, -0.3240, 1.2994, 0.0246, -0.0190, 0.1222, 0.4874 } });
-//    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 3.7730, 1.0000, 1 / 1.6040 } });
+    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 0.6963, -0.2447, -0.1353, -0.3240, 1.2994, 0.0246, -0.0190, 0.1222, 0.4874 } });
+    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 3.7730, 1.0000, 1 / 1.6040 } });
 
     dng_metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
     dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 2, 0, 1 } });

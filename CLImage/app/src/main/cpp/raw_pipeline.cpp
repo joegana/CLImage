@@ -97,7 +97,7 @@ int main(int argc, const char* argv[]) {
 
         // calibrateIMX492(&rawConverter, input_path.parent_path());
         // calibrateLeicaQ2(&rawConverter, input_path.parent_path());
-        calibrateiPhone11(&rawConverter, input_path.parent_path());
+        // calibrateiPhone11(&rawConverter, input_path.parent_path());
         // calibrateRicohGRIII(&rawConverter, input_path.parent_path());
 
         auto input_dir = std::filesystem::path(input_path.parent_path());
@@ -117,16 +117,32 @@ int main(int argc, const char* argv[]) {
             // transcodeAdobeDNG(input_path);
             // const auto rgb_image = demosaicIMX492DNG(&rawConverter, input_path);
             // const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
-            const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
-            // const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
-            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_v9.jpg", 95);
+            // const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
+            const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
+            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_wb3.jpg", 95);
         }
 
 //        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
 //
 //        // const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
-//        const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
+//        // const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
 //        // const auto rgb_image = demosaicIMX492DNG(&rawConverter, input_path);
+//
+//        const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
 //        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
+//
+//        {
+//            gls::tiff_metadata dng_metadata, exif_metadata;
+//            const auto rawImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
+//            auto cpu_image = demosaicImageCPU(*rawImage, &dng_metadata, false);
+//            cpu_image->apply([](gls::rgb_pixel_16* p, int x, int y) {
+//                *p = {
+//                    (uint16_t) (0xffff * sqrt((*p)[0] / (float) 0xffff)),
+//                    (uint16_t) (0xffff * sqrt((*p)[1] / (float) 0xffff)),
+//                    (uint16_t) (0xffff * sqrt((*p)[2] / (float) 0xffff))
+//                };
+//            });
+//            cpu_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_cpu_rgb.png", /*skip_alpha=*/ true);
+//        }
     }
 }

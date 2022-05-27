@@ -197,6 +197,6 @@ gls::Vector<4> estimateRawParameters(const gls::image<gls::luma_pixel_16>& rawIm
 void colorcheck(const std::array<RawPatchStats, 24>& rawStats);
 
 gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
-                                float white, float black, BayerPattern bayerPattern);
+                                const gls::Vector<4>& scale_mul, float white, float black, BayerPattern bayerPattern);
 
 #endif /* demosaic_hpp */

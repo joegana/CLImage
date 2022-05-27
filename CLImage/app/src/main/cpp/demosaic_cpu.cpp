@@ -203,7 +203,6 @@ void interpolateRedBlue(gls::image<gls::rgb_pixel_16>* image, BayerPattern bayer
 gls::image<gls::rgb_pixel_16>::unique_ptr demosaicImageCPU(const gls::image<gls::luma_pixel_16>& rawImage,
                                                            gls::tiff_metadata* metadata, bool auto_white_balance) {
     DemosaicParameters demosaicParameters;
-
     unpackDNGMetadata(rawImage, metadata, &demosaicParameters, auto_white_balance, nullptr, false);
 
     printf("Begin demosaicing image (CPU)...\n");

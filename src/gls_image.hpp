@@ -379,7 +379,7 @@ class image : public basic_image<T> {
         for (int y = 0; y < strip_height && y + destination_row - crop_y < destination->height; y++) {
             for (int x = 0; x < strip_width; x++) {
                 for (int c = 0; c < std::min((int) tiff_samplesperpixel, T::channels); c++) {
-                    if (x >= crop_x && y + destination_row >= crop_y) {
+                    if (x >= crop_x && y + destination_row >= crop_y && x - crop_x < destination->width) {
                         (*destination)[y + destination_row - crop_y][x - crop_x][c] = nextTiffPixel();
                     } else {
                         nextTiffPixel();
