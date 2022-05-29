@@ -327,7 +327,7 @@ float unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
         demosaicParameters->rgb_cam = cam_xyz_coeff(&pre_mul, cam_xyz);
 
         // If cam_mul is available use that instead of pre_mul
-        if (!as_shot_neutral.empty()) {
+        if (!as_shot_neutral.empty() && !auto_white_balance) {
             pre_mul = 1.0f / gls::Vector<3>(as_shot_neutral);
         }
     }
@@ -825,50 +825,54 @@ const gls::Matrix<3, 3> ycbcr_srgb = {
     { 1,  1.8556,  0       }
 };
 
-gls::Vector<3> readQuad(const gls::image<gls::luma_pixel_16>& rawImage, int x, int y, BayerPattern bayerPattern) {
+gls::Vector<3> readQuad(const gls::image<gls::luma_pixel_16>& rawImage, int x, int y, BayerPattern bayerPattern, int maxValue, bool* saturated) {
     const auto& offsets = bayerOffsets[bayerPattern];
     const auto& Or  = offsets[0];
     const auto& Og1 = offsets[1];
     const auto& Ob  = offsets[2];
     const auto& Og2 = offsets[3];
 
-    return {
-        (float) rawImage[y + Or.y][x + Or.x],
-        ((float) rawImage[y + Og1.y][x + Og1.x] +
-         (float) rawImage[y + Og2.y][x + Og2.x]) / 2.0f,
-        (float) rawImage[y + Ob.y][x + Ob.x]
-    };
+    const auto r = rawImage[y + Or.y][x + Or.x];
+    const auto g1 = rawImage[y + Og1.y][x + Og1.x];
+    const auto g2 = rawImage[y + Og2.y][x + Og2.x];
+    const auto b = rawImage[y + Ob.y][x + Ob.x];
+
+    if (saturated) {
+        *saturated = r >= maxValue || g1 >= maxValue || g2 >= maxValue || b >= maxValue;
+    }
+
+    return { (float) r, ((float) g1 + (float) g2) / 2.0f, (float) b };
 }
 
 WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
-                                         const gls::Vector<4>& scale_mul4, float white, float black, BayerPattern bayerPattern,
+                                         const gls::Vector<3>& scale_mul, float white, float black, BayerPattern bayerPattern,
                                          float highlightsFraction) {
-    const gls::Vector<3> scale_mul = { scale_mul4[0], scale_mul4[1], scale_mul4[2] };
-
-    const float max_white = 0.9;
-
     // Compute the average ycbcr values
-    gls::Vector<3> ycbcrAverage = { 0, 0, 0 };
-    int pixelCount = 0;
-    gls::image<gls::rgb_pixel_fp32> ycbcrImage(rawImage.width / 2, rawImage.height / 2);
+    float count = 0;
+    gls::Vector<3> M = { 0, 0, 0 };
+    gls::image<gls::rgb_pixel_fp32> YUV(rawImage.width / 2, rawImage.height / 2);
+    gls::image<gls::luma_pixel> saturationdMap(rawImage.width / 2, rawImage.height / 2);
     for (int y = 0; y < rawImage.height; y += 2) {
         for (int x = 0; x < rawImage.width; x += 2) {
-            // const auto rgb = (scale_mul * (readQuad(rawImage, x, y, bayerPattern) - black)) / (float) 0xffff;
-            const auto rgb = (readQuad(rawImage, x, y, bayerPattern) - black) / white;
+            bool saturated;
+            const auto rgb = (readQuad(rawImage, x, y, bayerPattern, /*maxValue=*/ white + black, /*saturated=*/ &saturated) - black) / white;
+            // const auto rgb = (scale_mul * (readQuad(rawImage, x, y, bayerPattern, white + black, &saturated) - black)) / (float) 0xffff;
+
+            saturationdMap[y / 2][x / 2] = saturated;
 
             const auto ycbcr = rgb_ycbcr * rgb;
-            ycbcrImage[y / 2][x / 2] = ycbcr;
-            if (ycbcr[0] < max_white) {
-                ycbcrAverage += ycbcr;
-                pixelCount++;
+            YUV[y / 2][x / 2] = ycbcr;
+            if (!saturated) {
+                M += ycbcr;
+                count++;
             }
         }
     }
-    ycbcrAverage /= (float) pixelCount;
+    M /= count;
 
 #if DUMP_YUV_IMAGE
-    gls::image<gls::rgb_pixel> srgb8Image(ycbcrImage.width, ycbcrImage.height);
-    ycbcrImage.apply([&srgb8Image](const gls::rgb_pixel_fp32 &p, int x, int y) {
+    gls::image<gls::rgb_pixel> srgb8Image(YUV.width, YUV.height);
+    YUV.apply([&srgb8Image](const gls::rgb_pixel_fp32 &p, int x, int y) {
         const auto rgb = ycbcr_srgb * gls::Vector<3>(p.v);
         srgb8Image[y][x] = {
             (uint8_t) std::clamp(sqrt(rgb[0]) * 255, 0.0f, 255.0f),
@@ -876,33 +880,39 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
             (uint8_t) std::clamp(sqrt(rgb[2]) * 255, 0.0f, 255.0f)
         };
     });
-    static int count = 0;
-    srgb8Image.write_jpeg_file("/Users/fabio/rgbImage" + std::to_string(count++) + ".jpg", 95);
+    static int image_count = 0;
+    srgb8Image.write_jpeg_file("/Users/fabio/rgbImage" + std::to_string(image_count++) + ".jpg", 95);
 #endif
 
     // Compute the ycbcr average absolute differences
-    gls::Vector<3> ycbcrDiffAverage = { 0, 0, 0 };
-    for (int y = 0; y < ycbcrImage.height; y++) {
-        for (int x = 0; x < ycbcrImage.width; x++) {
-            ycbcrDiffAverage += abs(gls::Vector<3>(ycbcrImage[y][x].v) - ycbcrAverage);
+    count = 0;
+    gls::Vector<3> D = { 0, 0, 0 };
+    for (int y = 0; y < YUV.height; y++) {
+        for (int x = 0; x < YUV.width; x++) {
+            if (saturationdMap[y][x] == 0) {
+                D += abs(gls::Vector<3>(YUV[y][x].v) - M);
+                count++;
+            }
         }
     }
-    ycbcrDiffAverage /= (float) ycbcrImage.width * ycbcrImage.height;
+    D /= count;
 
     std::array<std::pair<gls::Vector<3>, int>, 128> rgbWhiteAverageHist = { };
 
+    const float Wr = 1.5;
+    const float WCr = 1.5;
+
     int whitePixelsCount = 0;
     float YMax = 0;
-    for (int y = 0; y < ycbcrImage.height; y++) {
-        for (int x = 0; x < ycbcrImage.width; x++) {
-            const auto& p = ycbcrImage[y][x];
+    for (int y = 0; y < YUV.height; y++) {
+        for (int x = 0; x < YUV.width; x++) {
+            const auto& p = YUV[y][x];
 
             // Near white region pixels
-            if (p[0] < max_white &&
-                fabs(p[1] - (ycbcrAverage[1] + copysign(ycbcrDiffAverage[1], ycbcrAverage[1]))) < 1.5 * ycbcrDiffAverage[1] &&
-                fabs(p[2] - (1.5 * ycbcrAverage[2] + copysign(ycbcrDiffAverage[2], ycbcrAverage[2]))) < 1.5 * ycbcrDiffAverage[2]) {
-
-                const auto rgb = (readQuad(rawImage, 2 * x, 2 * y, bayerPattern) - black) / white;
+            if (saturationdMap[y][x] == 0 &&
+                fabs(p[1] - (M[1] + copysign(D[1], M[1]))) < Wr * D[1] &&
+                fabs(p[2] - (WCr * M[2] + copysign(D[2], M[2]))) < Wr * D[2]) {
+                const auto rgb = (readQuad(rawImage, 2 * x, 2 * y, bayerPattern, /*maxValue=*/ 0, /*saturated=*/ nullptr) - black) / white;
 
                 float Y = p[0];
                 if (Y > YMax) {
@@ -943,29 +953,35 @@ WhiteBalanceStats autoWhiteBalanceKernel(const gls::image<gls::luma_pixel_16>& r
     }
     rgbWhite90Average /= (float) white90PixelsCount;
 
-    std::cout << "histMaxEntry: " << histMaxEntry << ", white90PixelsCount: " << white90PixelsCount << ", whitePixelsCount: " << whitePixelsCount << std::endl;
-
     auto wbGain = YMax / rgbWhite90Average;
 
     return {
         .wbGain = wbGain / wbGain[1],
-        .diffAverage = std::max(ycbcrDiffAverage[1], ycbcrDiffAverage[2]),
+        .diffAverage = std::max(D[1], D[2]), // Tile non uniformity as a merit factor
         .whitePixelsCount = white90PixelsCount
     };
 }
 
+template <size_t N>
+float lenght(const gls::Vector<N>& vec) {
+    float sumSq = 0;
+    for (const auto& v : vec) {
+        sumSq += v * v;
+    }
+    return sqrt(sumSq);
+}
+
 gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
-                                const gls::Vector<4>& scale_mul, float white, float black, BayerPattern bayerPattern) {
+                                const gls::Vector<4>& scale_mul4, float white, float black, BayerPattern bayerPattern) {
+    const gls::Vector<3> scale_mul = gls::Vector<3> { scale_mul4[0], scale_mul4[1], scale_mul4[2] } / scale_mul4[1];
+
     const int hTiles = 4;
-    const int vTiles = 3;
+    const int vTiles = 4;
 
     const int tileWidth = rawImage.width / hTiles;
     const int tileHeight = rawImage.height / vTiles;
 
     ThreadPool threadPool(8);
-
-    gls::Vector<3> wbGain = { 0, 0, 0 };
-    int wbCount = 0;
 
     auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -974,28 +990,30 @@ gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, 
         for (int x = 0; x < hTiles; x++) {
             wbGains[y][x] = threadPool.enqueue([x, y, tileWidth, tileHeight, rgb_ycbcr, white, black, bayerPattern, &rawImage, &scale_mul]() -> WhiteBalanceStats {
                 const auto rawTile = gls::image<gls::luma_pixel_16>(rawImage, x * tileWidth, y * tileHeight, tileWidth, tileHeight);
-                return autoWhiteBalanceKernel(rawTile, rgb_ycbcr, scale_mul, white, black, bayerPattern, /*highlightsFraction=*/ 0.1);
+                return autoWhiteBalanceKernel(rawTile, rgb_ycbcr, scale_mul, white, black, bayerPattern, /*highlightsFraction=*/ 0.01);
             });
         }
     }
+
+    gls::Vector<3> wbGain = { 0, 0, 0 };
+    float wbNorm = 0;
+
     for (int y = 0; y < vTiles; y++) {
         for (int x = 0; x < hTiles; x++) {
             const auto wb = wbGains[y][x].get();
-            std::cout << "wbGain(" << x << ":" << y << "): " << wb.wbGain << ", diffAverage: " << wb.diffAverage << std::endl;
 
-            if (wb.diffAverage > 0.001) {
-                wbGain += wb.wbGain;
-                wbCount++;
-            }
+            // Weighted average with non uniformity as a merit factor
+            wbGain += wb.wbGain * wb.diffAverage;
+            wbNorm += wb.diffAverage;
         }
     }
-    wbGain /= (float) wbCount;
-    wbGain /= (float) wbGain[0];
+    wbGain /= (float) wbNorm;
+    wbGain /= (float) wbGain[1];
 
     auto t_end = std::chrono::high_resolution_clock::now();
     double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
-
-    std::cout << "wbGain: " << wbGain << ", execution time: " << elapsed_time_ms << "ms." << std::endl;
+    const auto diff = lenght(wbGain - scale_mul);
+    std::cout << "wbGain: " << wbGain << ", wbGain - scale_mul: " << wbGain - scale_mul << ", diffLen: " << diff << ", execution time: " << elapsed_time_ms << "ms." << std::endl;
 
     return wbGain;
 }
