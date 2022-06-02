@@ -13,6 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma OPENCL EXTENSION cl_khr_fp16 : enable
+
 enum BayerPattern {
     grbg = 0,
     gbrg = 1,
@@ -45,6 +47,23 @@ constant const int2 bayerOffsets[4][4] = {
       type_of_x _x = (x); \
       type_of_x t = clamp((_x - _edge0) / (_edge1 - _edge0), 0.0f, 1.0f); \
       t * t * (3.0f - 2.0f * t); })
+
+#endif
+
+#if defined(__APPLE__)
+
+// Apple's half float fail to compile with the system's min/max functions
+
+#define min(a, b) ({__typeof__(a) _a = (a); \
+    __typeof__(b) _b = (b); \
+    _a < _b ? _a : _b;})
+
+#define max(a, b) ({__typeof__(a) _a = (a); \
+    __typeof__(b) _b = (b); \
+    _a > _b ? _a : _b;})
+
+#define abs(a) ({__typeof__(a) _a = (a); \
+    _a > 0 ? _a : -_a;})
 
 #endif
 
@@ -290,34 +309,27 @@ void median_load_data_3x3x3(float3 v[9], image2d_t inputImage, int2 imageCoordin
 #define mnmx5(a, b, c, d, e)    s2(a, b); s2(c, d); mn3(a, c, e); mx3(b, d, e);             // 6 exchanges
 #define mnmx6(a, b, c, d, e, f) s2(a, d); s2(b, e); s2(c, f); mn3(a, b, c); mx3(d, e, f);   // 7 exchanges
 
+#define median_3x3()                                                            \
+    /* Starting with a subset of size 6, remove the min and max each time */    \
+    mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);                                  \
+    mnmx5(v[1], v[2], v[3], v[4], v[6]);                                        \
+    mnmx4(v[2], v[3], v[4], v[7]);                                              \
+    mnmx3(v[3], v[4], v[8]);
+
+
 void median_sort_data_3x3(float v[9]) {
     float temp;
-
-    // Starting with a subset of size 6, remove the min and max each time
-    mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);
-    mnmx5(v[1], v[2], v[3], v[4], v[6]);
-    mnmx4(v[2], v[3], v[4], v[7]);
-    mnmx3(v[3], v[4], v[8]);
+    median_3x3();
 }
 
 void median_sort_data_3x3x2(float2 v[9]) {
     float2 temp;
-
-    // Starting with a subset of size 6, remove the min and max each time
-    mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);
-    mnmx5(v[1], v[2], v[3], v[4], v[6]);
-    mnmx4(v[2], v[3], v[4], v[7]);
-    mnmx3(v[3], v[4], v[8]);
+    median_3x3();
 }
 
 void median_sort_data_3x3x3(float3 v[9]) {
     float3 temp;
-
-    // Starting with a subset of size 6, remove the min and max each time
-    mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);
-    mnmx5(v[1], v[2], v[3], v[4], v[6]);
-    mnmx4(v[2], v[3], v[4], v[7]);
-    mnmx3(v[3], v[4], v[8]);
+    median_3x3();
 }
 
 #undef s2
@@ -424,75 +436,148 @@ kernel void medianFilterImage(read_only image2d_t inputImage, write_only image2d
  * 5 x 5 Fast Median Filter Implementation for Chroma Antialiasing
  */
 
-float3 antialias_load_data_5x5(float2 v[25], image2d_t inputImage, int2 imageCoordinates) {
-    float3 max = -100;
-    float3 min =  100;
-    for(int x = -2; x <= 2; x++) {
-        for(int y = -2; y <= 2; y++) {
-            float3 sample = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
-            max = sample > max ? sample : max;
-            min = sample < min ? sample : min;
-            v[(x + 2) * 5 + (y + 2)] = sample.yz;
-        }
-    }
-    return max - min;
-}
+#define s(a, b)                         \
+  ({ typedef __typeof__ (a) type_of_a;  \
+     type_of_a temp = a;                \
+     a = min(a, b);                     \
+     b = max(temp, b); })
 
-#define s2(a, b)                            temp = a; a = min(a, b); b = max(temp, b);
-#define t2(a, b)                            s2(v[a], v[b]);
-#define t24(a, b, c, d, e, f, g, h)         t2(a, b); t2(c, d); t2(e, f); t2(g, h);
-#define t25(a, b, c, d, e, f, g, h, i, j)   t24(a, b, c, d, e, f, g, h); t2(i, j);
+#define minMax14(a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13) s(a0,a1);s(a2,a3);s(a4,a5);s(a6,a7);s(a8,a9);s(a10,a11);s(a12,a13);s(a0,a2);s(a4,a6);s(a8,a10);s(a1,a3);s(a5,a7);s(a9,a11);s(a0,a4);s(a8,a12);s(a3,a7);s(a11,a13);s(a0,a8);s(a7,a13);
+#define minMax13(a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12) s(a0,a1);s(a2,a3);s(a4,a5);s(a6,a7);s(a8,a9);s(a10,a11);s(a0,a2);s(a4,a6);s(a8,a10);s(a1,a3);s(a5,a7);s(a9,a11);s(a0,a4);s(a8,a12);s(a3,a7);s(a11,a12);s(a0,a8);s(a7,a12);
+#define minMax12(a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11) s(a0,a1);s(a2,a3);s(a4,a5);s(a6,a7);s(a8,a9);s(a10,a11);s(a0,a2);s(a4,a6);s(a8,a10);s(a1,a3);s(a5,a7);s(a9,a11);s(a0,a4);s(a3,a7);s(a0,a8);s(a7,a11);
+#define minMax11(a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10) s(a0,a1);s(a2,a3);s(a4,a5);s(a6,a7);s(a8,a9);s(a0,a2);s(a4,a6);s(a8,a10);s(a1,a3);s(a5,a7);s(a9,a10);s(a0,a4);s(a3,a7);s(a0,a8);s(a7,a10);
+#define minMax10(a0,a1,a2,a3,a4,a5,a6,a7,a8,a9) s(a0,a1);s(a2,a3);s(a4,a5);s(a6,a7);s(a8,a9);s(a0,a2);s(a4,a6);s(a1,a3);s(a5,a7);s(a0,a4);s(a3,a7);s(a0,a8);s(a7,a9);
+#define minMax9(a0,a1,a2,a3,a4,a5,a6,a7,a8) s(a0,a1);s(a2,a3);s(a4,a5);s(a6,a7);s(a0,a2);s(a4,a6);s(a1,a3);s(a5,a7);s(a0,a4);s(a3,a7);s(a0,a8);s(a7,a8);
+#define minMax8(a0,a1,a2,a3,a4,a5,a6,a7) s(a0,a1);s(a2,a3);s(a4,a5);s(a6,a7);s(a0,a2);s(a4,a6);s(a1,a3);s(a5,a7);s(a0,a4);s(a3,a7);
+#define minMax7(a0,a1,a2,a3,a4,a5,a6) s(a0,a1);s(a2,a3);s(a4,a5);s(a0,a2);s(a4,a6);s(a1,a3);s(a5,a6);s(a0,a4);s(a3,a6);
+#define minMax6(a0,a1,a2,a3,a4,a5) s(a0,a1);s(a2,a3);s(a4,a5);s(a0,a2);s(a1,a3);s(a0,a4);s(a3,a5);
+#define minMax5(a0,a1,a2,a3,a4) s(a0,a1);s(a2,a3);s(a0,a2);s(a1,a3);s(a0,a4);s(a3,a4);
+#define minMax4(a0,a1,a2,a3) s(a0,a1);s(a2,a3);s(a0,a2);s(a1,a3);
+#define minMax3(a0,a1,a2) s(a0,a1);s(a0,a2);s(a1,a2);
 
-void median_sort_data_5x5(float2 v[25]) {
-    float2 temp;
+#define fast_median5x5(inputImage, imageCoordinates)                                \
+    ({                                                                              \
+        medianPixelType a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13; \
+                                                                                    \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(-1, -2));              \
+        a1 = readImage(inputImage, imageCoordinates + (int2)(0, -2));               \
+        a2 = readImage(inputImage, imageCoordinates + (int2)(1, -2));               \
+        a3 = readImage(inputImage, imageCoordinates + (int2)(2, -2));               \
+        a4 = readImage(inputImage, imageCoordinates + (int2)(-1, -1));              \
+        a5 = readImage(inputImage, imageCoordinates + (int2)(0, -1));               \
+        a6 = readImage(inputImage, imageCoordinates + (int2)(1, -1));               \
+        a7 = readImage(inputImage, imageCoordinates + (int2)(2, -1));               \
+        a8 = readImage(inputImage, imageCoordinates + (int2)(-1, 0));               \
+        a9 = readImage(inputImage, imageCoordinates + (int2)(0, 0));                \
+        a10 = readImage(inputImage, imageCoordinates + (int2)(1, 0));               \
+        a11 = readImage(inputImage, imageCoordinates + (int2)(2, 0));               \
+        a12 = readImage(inputImage, imageCoordinates + (int2)(-1, 1));              \
+        a13 = readImage(inputImage, imageCoordinates + (int2)(0, 1));               \
+        minMax14(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13);       \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(1, 1));                \
+        minMax13(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12);            \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(2, 1));                \
+        minMax12(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);                 \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(-1, 2));               \
+        minMax11(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);                      \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(0, 2));                \
+        minMax10(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9);                           \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(1, 2));                \
+        minMax9(a0, a1, a2, a3, a4, a5, a6, a7, a8);                                \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(2, 2));                \
+        minMax8(a0, a1, a2, a3, a4, a5, a6, a7);                                    \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(-2, 2));               \
+        minMax7(a0, a1, a2, a3, a4, a5, a6);                                        \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(-2, 1));               \
+        minMax6(a0, a1, a2, a3, a4, a5);                                            \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(-2, 0));               \
+        minMax5(a0, a1, a2, a3, a4);                                                \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(-2, -1));              \
+        minMax4(a0, a1, a2, a3);                                                    \
+        a0 = readImage(inputImage, imageCoordinates + (int2)(-2, -2));              \
+        minMax3(a0, a1, a2);                                                        \
+        a1;                                                                         \
+    })
 
-    t25(0,  1,        3,  4,       2,  4,         2, 3,          6,  7);
-    t25(5,  7,        5,  6,       9,  7,         1, 7,          1,  4);
-    t25(12, 13,       11, 13,      11, 12,        15, 16,        14, 16);
-    t25(14, 15,       18, 19,      17, 19,        17, 18,        21, 22);
-    t25(20, 22,       20, 21,      23, 24,        2, 5,          3,  6);
-    t25(0,  6,        0,  3,       4,  7,         1, 7,          1,  4);
-    t25(11, 14,       8,  14,      8,  11,        12, 15,        9, 15);
-    t25(9,  12,       13, 16,      10, 16,        10, 13,        20, 23);
-    t25(17, 23,       17, 20,      21, 24,        18, 24,        18, 21);
-    t25(19, 22,       8,  17,      9,  18,        0, 18,         0,  9);
-    t25(10, 19,       1,  19,      1,  10,        11, 20,        2,  20);
-    t25(2,  11,       12, 21,      3,  21,        3, 12,         13, 22);
-    t25(4,  22,       4,  13,      14, 23,        5, 23,         5,  14);
-    t25(15, 24,       6,  24,      6,  15,        7, 16,         7,  19);
-    t25(3,  11,       5,  17,      11, 17,        9, 17,         4,  10);
-    t25(6,  12,       7,  14,      4,  6,         4, 7,         12,  14);
-    t25(10, 14,       6,  7,       10, 12,        6, 10,         6,  17);
-    t25(12, 17,       7,  17,      7,  10,        12, 18,        7,  12);
-    t24(10, 18,       12, 20,      10, 20,        10, 12);
-}
 
-#undef t2
-#undef t24
-#undef t25
-#undef s2
+#define readImage(image, pos)  read_imageh(image, pos).xyz;
 
-float3 antiAliasFilter5x5(image2d_t inputImage, int2 imageCoordinates) {
-    float2 v[25];
-    float3 D = antialias_load_data_5x5(v, inputImage, imageCoordinates);
-    median_sort_data_5x5(v);
-    float2 medianC = v[12];
-
-    float cf = D.x < D.y && D.x < D.x ? D.x : max(D.x, max(D.y, D.z));
-    cf = exp(-312.5 * cf * cf);
-
-    float3 value = read_imagef(inputImage, imageCoordinates).xyz;
-    float2 chroma = medianC + cf * (value.yz - medianC);
-    return (float3) (value.x, chroma);
-}
-
-kernel void antiAliasImage5x5(read_only image2d_t inputImage, write_only image2d_t denoisedImage) {
+kernel void medianFilterImage5x5(read_only image2d_t inputImage, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float3 denoisedPixel = antiAliasFilter5x5(inputImage, imageCoordinates);
+    typedef half3 medianPixelType;
 
-    write_imagef(denoisedImage, imageCoordinates, (float4) (denoisedPixel, 0.0));
+    half3 median = fast_median5x5(inputImage, imageCoordinates);
+
+    write_imageh(denoisedImage, imageCoordinates, (half4) (median, 0));
 }
+#undef readImage
+
+
+// ---- False Colors Removal ----
+
+/*
+ See: "False colors removal on the YCr-Cb color space", V. Tomaselli, M. Guarnera, G. Messina
+      https://www.researchgate.net/publication/221159269_False_colors_removal_on_the_YCr-Cb_color_space
+ */
+
+// Read image elements for median filter and collect pixel statistics
+
+#define readImage(image, pos)                    \
+    ({                                           \
+        half3 p = read_imageh(image, pos).xyz;   \
+        max = p > max ? p : max;                 \
+        min = p < min ? p : min;                 \
+        half W = 1.0h / (1.0h + p.x - value.x);  \
+        correlation += p.yz * W;                 \
+        sumW += W;                               \
+        centerCorrelation += W > 0.6h;           \
+        p.yz;                                    \
+    })
+
+// False Colors Removal kernel, see cited paper for algorithm details
+
+kernel void falseColorsRemovalImage(read_only image2d_t inputImage, write_only image2d_t denoisedImage) {
+    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
+
+    half3 value = read_imageh(inputImage, imageCoordinates).xyz;
+
+    typedef half2 medianPixelType;
+
+    half3 max = -100;
+    half3 min =  100;
+    half2 correlation = 0;
+    half sumW = 0;
+    int centerCorrelation = 0;
+
+    half2 medianC = fast_median5x5(inputImage, imageCoordinates);
+
+    correlation = centerCorrelation > 1 ? correlation / (value.yz * sumW) : 1;
+
+    half3 D = max - min;
+
+    half cf = D.x < D.y && D.x < D.x ? D.x : max(D.x, max(D.y, D.z));
+    cf = exp(-312.5 * cf * cf);
+
+    half2 chroma = medianC + min(cf + abs(correlation), 1.0h) * (value.yz - medianC);
+
+    write_imageh(denoisedImage, imageCoordinates, (half4) (value.x, chroma, 0));
+}
+#undef readImage
+
+#undef s
+#undef minMax14
+#undef minMax13
+#undef minMax12
+#undef minMax11
+#undef minMax10
+#undef minMax9
+#undef minMax8
+#undef minMax7
+#undef minMax6
+#undef minMax5
+#undef minMax4
+#undef minMax3
 
 /// ---- Image Denoising ----
 
