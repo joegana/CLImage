@@ -523,16 +523,16 @@ kernel void medianFilterImage5x5(read_only image2d_t inputImage, write_only imag
 
 // Read image elements for median filter and collect pixel statistics
 
-#define readImage(image, pos)                    \
-    ({                                           \
-        half3 p = read_imageh(image, pos).xyz;   \
-        max = p > max ? p : max;                 \
-        min = p < min ? p : min;                 \
-        half W = 1.0h / (1.0h + p.x - value.x);  \
-        correlation += p.yz * W;                 \
-        sumW += W;                               \
-        centerCorrelation += W > 0.6h;           \
-        p.yz;                                    \
+#define readImage(image, pos)                         \
+    ({                                                \
+        half3 p = read_imageh(image, pos).xyz;        \
+        max = p > max ? p : max;                      \
+        min = p < min ? p : min;                      \
+        half W = 1.0h / (1.0h + p.x - inputPixel.x);  \
+        crossCorrelation += p.yz * W;                 \
+        centerCorrelation += W > 0.6h;                \
+        sumW += W;                                    \
+        p.yz;                                         \
     })
 
 // False Colors Removal kernel, see cited paper for algorithm details
@@ -540,28 +540,33 @@ kernel void medianFilterImage5x5(read_only image2d_t inputImage, write_only imag
 kernel void falseColorsRemovalImage(read_only image2d_t inputImage, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    half3 value = read_imageh(inputImage, imageCoordinates).xyz;
+    half3 inputPixel = read_imageh(inputImage, imageCoordinates).xyz;
 
+    // Data type of the median filter
     typedef half2 medianPixelType;
 
+    // Region statistics
     half3 max = -100;
     half3 min =  100;
-    half2 correlation = 0;
+    half2 crossCorrelation = 0;
     half sumW = 0;
     int centerCorrelation = 0;
 
-    half2 medianC = fast_median5x5(inputImage, imageCoordinates);
+    // Compute the median filter of the chroma and extract the region's statistics
+    half2 chromaMedian = fast_median5x5(inputImage, imageCoordinates);
 
-    correlation = centerCorrelation > 1 ? correlation / (value.yz * sumW) : 1;
-
+    // Correction Factor from edge strenght estimation
     half3 D = max - min;
-
     half cf = D.x < D.y && D.x < D.x ? D.x : max(D.x, max(D.y, D.z));
     cf = exp(-312.5 * cf * cf);
 
-    half2 chroma = medianC + min(cf + abs(correlation), 1.0h) * (value.yz - medianC);
+    // Inter-channel correlation penalty factor
+    crossCorrelation = centerCorrelation > 1 ? crossCorrelation / (inputPixel.yz * sumW) : 1;
 
-    write_imageh(denoisedImage, imageCoordinates, (half4) (value.x, chroma, 0));
+    // Mix the chroma median with the original signal according
+    half2 chroma = mix(chromaMedian, inputPixel.yz, min(cf + crossCorrelation * crossCorrelation, 1.0h));
+
+    write_imageh(denoisedImage, imageCoordinates, (half4) (inputPixel.x, chroma, 0));
 }
 #undef readImage
 
