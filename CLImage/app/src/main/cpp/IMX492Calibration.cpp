@@ -258,7 +258,7 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(RawConverter* rawConver
 
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
 
-    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ true, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
+    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ true);
 
     float iso = 100;
     const auto exifIsoSpeedRatings = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
@@ -273,6 +273,6 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(RawConverter* rawConver
     demosaicParameters.noiseLevel = denoiseParameters.first;
     demosaicParameters.denoiseParameters = denoiseParameters.second;
 
-    // return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, &demosaicParameters, nullptr, /*rotate_180=*/ true));
-    return RawConverter::convertToRGBImage(*rawConverter->fastDemosaicImage(*inputImage, demosaicParameters));
+    return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, &demosaicParameters, nullptr, /*rotate_180=*/ true));
+    // return RawConverter::convertToRGBImage(*rawConverter->fastDemosaicImage(*inputImage, demosaicParameters));
 }

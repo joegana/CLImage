@@ -36,9 +36,10 @@ typedef struct DenoiseParameters {
 } DenoiseParameters;
 
 typedef struct RGBConversionParameters {
-    float contrast;
-    float saturation;
-    float toneCurveSlope;
+    float contrast = 1.05;
+    float saturation = 1.0;
+    float toneCurveSlope = 3.5;
+    int localToneMapping = 0;
 } RGBConversionParameters;
 
 typedef struct NoiseModel {

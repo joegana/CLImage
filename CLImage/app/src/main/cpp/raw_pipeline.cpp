@@ -115,11 +115,11 @@ int main(int argc, const char* argv[]) {
             LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
 
             // transcodeAdobeDNG(input_path);
-            const auto rgb_image = demosaicIMX492DNG(&rawConverter, input_path);
+            // const auto rgb_image = demosaicIMX492DNG(&rawConverter, input_path);
             // const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
             // const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
-            // const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
-            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_wb3.jpg", 95);
+            const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
+            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_hdr_tuned_highlights_d_1.2.jpg", 95);
         }
 
 //        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
@@ -130,7 +130,7 @@ int main(int argc, const char* argv[]) {
 //
 //        const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
 //        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
-//
+
 //        {
 //            gls::tiff_metadata dng_metadata, exif_metadata;
 //            const auto rawImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);

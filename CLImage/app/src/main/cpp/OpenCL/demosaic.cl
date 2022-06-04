@@ -85,12 +85,6 @@ constant float2 sobelXY[3][3] = {
     { {-1, -1 },  { 0, -2 }, { 1, -1 } },
 };
 
-//constant float2 sobelXY[3][3] = {
-//    { {-1,  1 },  { 0,  1 }, { 1,  1 } },
-//    { {-1,  0 } , { 0,  0 }, { 1,  0 } },
-//    { {-1, -1 },  { 0, -1 }, { 1, -1 } },
-//};
-
 float2 gradientDirection(read_only image2d_t inputImage, int2 imageCoordinates) {
     float2 sobel = 0;
     for (int y = 0; y < 3; y++) {
@@ -164,7 +158,7 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
         float flatness = 1 - smoothstep(0.5 * eps, 2 * eps, 16 * fabs(dv.x - dv.y));
         float sample = mix(dv.x > dv.y ? sample_v : sample_h, sample_flat, flatness);
 
-        write_imagef(greenImage, imageCoordinates, clamp(sample, 0.0, 1.0));
+        write_imagef(greenImage, imageCoordinates, sample);
     } else {
         write_imagef(greenImage, imageCoordinates, read_imagef(rawImage, (int2)(x, y)).x);
     }
@@ -255,7 +249,7 @@ kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t
         outputCoordinates = get_image_dim(rgbImage) - outputCoordinates;
     }
 
-    write_imagef(rgbImage, outputCoordinates, (float4)(clamp((float3)(red, green, blue), 0.0, 1.0), 0));
+    write_imagef(rgbImage, outputCoordinates, (float4)(red, green, blue, 0));
 }
 
 kernel void fastDebayer(read_only image2d_t rawImage, write_only image2d_t rgbImage, int bayerPattern) {
@@ -409,6 +403,7 @@ kernel void despeckleYCbCrImage(read_only image2d_t inputImage, write_only image
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
     float denoisedLuma = despeckle_3x3(inputImage, imageCoordinates);
+    // TODO: maybe median_5x5 for chroma?
     // float2 denoisedChroma = median_filter_3x3_chroma(inputImage, imageCoordinates);
 
     float3 pixel = read_imagef(inputImage, imageCoordinates).xyz;
@@ -891,6 +886,75 @@ float4 denoiseRawRGBAGuided(float4 rawVariance, image2d_t inputImage, int2 image
     return filtered_pixel / kernel_norm;
 }
 
+// TODO: use camera specific conversion
+constant float3 ycbcr_srgb[3] = {
+    { 1,  0,       1.5748, },
+    { 1, -0.1873, -0.4681, },
+    { 1,  1.8556,  0       }
+};
+
+// Local Tone Mapping - guideImage is a 8x downsampled version of inputImage
+
+float4 localToneMappingMask(float eps, image2d_t inputImage, image2d_t guideImage, int2 imageCoordinates, sampler_t linear_sampler, float2 posNorm) {
+    const float3 input = read_imagef(inputImage, imageCoordinates).x;
+    const float luma = input.x;
+
+    const float2 pos = convert_float2(imageCoordinates) * posNorm;
+
+    const int radius = 5;
+    const int count = (2 * radius + 1) * (2 * radius + 1);
+
+    // One channel Fast Guided Filter
+
+    float sum = 0;
+    float sumSq = 0;
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
+            float guideSample = read_imagef(guideImage, linear_sampler, pos + (float2)(x + 0.5f, y + 0.5f) * posNorm).x;
+            sum += guideSample;
+            sumSq += guideSample * guideSample;
+        }
+    }
+    float mean = sum / count;
+    float var = (sumSq - (sum * sum) / count) / count;
+
+    float filtered_pixel = 0;
+    float kernel_norm = 0;
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
+            float guideSample = read_imagef(guideImage, linear_sampler, pos + (float2)(x + 0.5f, y + 0.5f) * posNorm).x;
+
+            float sampleWeight = 1 + (guideSample - mean) * (luma - mean) / (var + eps);
+
+            filtered_pixel += sampleWeight * guideSample;
+            kernel_norm += sampleWeight;
+        }
+    }
+    float filteredPixel = filtered_pixel / kernel_norm;
+
+    // YCbCr -> RGB version of the input pixel, for highlights compression
+    const float3 rgb = (float3) (dot(ycbcr_srgb[0], input), dot(ycbcr_srgb[1], input), dot(ycbcr_srgb[2], input));
+
+    // LTM curve computed in Log space
+    const float detail = 1.2;
+    const float highlightsClipping = min(length(sqrt(rgb)), 1.0);
+    const float shadows = mix(1.3, 1.0, highlightsClipping);
+    const float ltmBoost = pow(filteredPixel, 1.0 / shadows) * pow(luma / filteredPixel, detail) / luma;
+
+    // Avoid boosting highlights
+    return mix(ltmBoost, 1.0, highlightsClipping);
+}
+
+kernel void localToneMappingMaskImage(read_only image2d_t inputImage, read_only image2d_t guideImage, float eps,
+                                  write_only image2d_t outputImage, sampler_t linear_sampler) {
+    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
+    const float2 posNorm = 1.0 / convert_float2(get_image_dim(outputImage));
+
+    float4 denoisedPixel = localToneMappingMask(eps, inputImage, guideImage, imageCoordinates, linear_sampler, posNorm);
+
+    write_imagef(outputImage, imageCoordinates, denoisedPixel);
+}
+
 float4 denoiseRawRGBAGuidedCov(float4 eps, image2d_t inputImage, int2 imageCoordinates) {
     const float4 input = read_imagef(inputImage, imageCoordinates);
 
@@ -1140,13 +1204,15 @@ typedef struct RGBConversionParameters {
     float contrast;
     float saturation;
     float toneCurveSlope;
+    int localToneMapping;
 } RGBConversionParameters;
 
-kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t rgbImage,
+kernel void convertTosRGB(read_only image2d_t linearImage, read_only image2d_t ltmMaskImage, write_only image2d_t rgbImage,
                           Matrix3x3 transform, RGBConversionParameters rgbConversionParameters) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
     float3 pixel_value = read_imagef(linearImage, imageCoordinates).xyz;
+    float ltmBoost = rgbConversionParameters.localToneMapping ? read_imagef(ltmMaskImage, imageCoordinates).x : 1;
 
     // pixel_value = saturationBoost(pixel_value, rgbConversionParameters.saturation);
     // pixel_value = desaturateBlacks(pixel_value);
@@ -1156,7 +1222,7 @@ kernel void convertTosRGB(read_only image2d_t linearImage, write_only image2d_t 
                            dot(transform.m[1], pixel_value),
                            dot(transform.m[2], pixel_value));
 
-    write_imagef(rgbImage, imageCoordinates, (float4) (clamp(toneCurve(rgb, rgbConversionParameters.toneCurveSlope), 0.0, 1.0), 0.0));
+    write_imagef(rgbImage, imageCoordinates, (float4) (clamp(toneCurve(rgb, rgbConversionParameters.toneCurveSlope) * ltmBoost, 0.0, 1.0), 0.0));
 }
 
 kernel void resample(read_only image2d_t inputImage, write_only image2d_t outputImage, sampler_t linear_sampler) {

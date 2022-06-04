@@ -24,9 +24,19 @@ void RawConverter::allocateTextures(gls::OpenCLContext* glsContext, int width, i
         clLinearRGBImageB = std::make_unique<gls::cl_image_2d<gls::rgba_pixel_float>>(clContext, width, height);
         clsRGBImage = std::make_unique<gls::cl_image_2d<gls::rgba_pixel>>(clContext, width, height);
 
+        // Placeholder, only allocated if LTM is used
+        ltmMaskImage = std::make_unique<gls::cl_image_2d<gls::luma_pixel_float>>(clContext, 1, 1);
+
         pyramidalDenoise = std::make_unique<PyramidalDenoise<5>>(glsContext, width, height);
     }
+}
 
+void RawConverter::allocateLtmMaskImage(gls::OpenCLContext* glsContext, int width, int height) {
+    auto clContext = glsContext->clContext();
+
+    if (ltmMaskImage->width != width || ltmMaskImage->height != height) {
+        ltmMaskImage = std::make_unique<gls::cl_image_2d<gls::luma_pixel_float>>(clContext, width, height);
+    }
 }
 
 void RawConverter::allocateHighNoiseTextures(gls::OpenCLContext* glsContext, int width, int height) {
@@ -46,6 +56,9 @@ void RawConverter::allocateFastDemosaicTextures(gls::OpenCLContext* glsContext, 
         clScaledRawImage = std::make_unique<gls::cl_image_2d<gls::luma_pixel_float>>(clContext, width, height);
         clFastLinearRGBImage = std::make_unique<gls::cl_image_2d<gls::rgba_pixel_float>>(clContext, width/2, height/2);
         clsFastRGBImage = std::make_unique<gls::cl_image_2d<gls::rgba_pixel>>(clContext, width/2, height/2);
+
+        // Placeholder, not used in Fast Demosaic
+        ltmMaskImage = std::make_unique<gls::cl_image_2d<gls::luma_pixel_float>>(clContext, 1, 1);
     }
 }
 
@@ -63,6 +76,11 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     LOG_INFO(TAG) << "NoiseLevel: " << demosaicParameters->noiseLevel << std::endl;
 
     allocateTextures(_glsContext, rawImage.width, rawImage.height);
+
+    if (demosaicParameters->rgbConversionParameters.localToneMapping) {
+        allocateLtmMaskImage(_glsContext, rawImage.width, rawImage.height);
+    }
+
     if (high_noise_image) {
         allocateHighNoiseTextures(_glsContext, rawImage.width, rawImage.height);
     }
@@ -126,12 +144,16 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     std::cout << "pyramidNlf:\n" << std::scientific << noiseModel->pyramidNlf << std::endl;
 
+    if (demosaicParameters->rgbConversionParameters.localToneMapping) {
+        localToneMappingMask(_glsContext, *clDenoisedImage, *(pyramidalDenoise->imagePyramid[2]), 0.01, ltmMaskImage.get());
+    }
+
     // Convert result back to camera RGB
     transformImage(_glsContext, *clDenoisedImage, clDenoisedImage, inverse(cam_to_ycbcr));
 
     // --- Image Post Processing ---
 
-    convertTosRGB(_glsContext, *clDenoisedImage, clsRGBImage.get(), demosaicParameters->rgb_cam, *demosaicParameters); // TODO: ???
+    convertTosRGB(_glsContext, *clDenoisedImage, *ltmMaskImage, clsRGBImage.get(), *demosaicParameters);
 
 #ifdef PRINT_EXECUTION_TIME
     cl::CommandQueue queue = cl::CommandQueue::getDefault();
@@ -167,7 +189,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::fastDemosaicImage(const gls::im
 
     // --- Image Post Processing ---
 
-    convertTosRGB(_glsContext, *clFastLinearRGBImage, clsFastRGBImage.get(), demosaicParameters.rgb_cam, demosaicParameters);
+    convertTosRGB(_glsContext, *clFastLinearRGBImage, *ltmMaskImage, clsFastRGBImage.get(), demosaicParameters);
 
     return clsFastRGBImage.get();
 }

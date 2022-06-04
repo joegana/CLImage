@@ -62,8 +62,9 @@ void transformImage(gls::OpenCLContext* glsContext,
 
 void convertTosRGB(gls::OpenCLContext* glsContext,
                    const gls::cl_image_2d<gls::rgba_pixel_float>& linearImage,
+                   const gls::cl_image_2d<gls::luma_pixel_float>& ltmMaskImage,
                    gls::cl_image_2d<gls::rgba_pixel>* rgbImage,
-                   const gls::Matrix<3, 3>& transform, const DemosaicParameters& demosaicParameters);
+                   const DemosaicParameters& demosaicParameters);
 
 void denoiseImage(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
@@ -74,6 +75,12 @@ void denoiseImageGuided(gls::OpenCLContext* glsContext,
                         const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
                         const gls::Vector<3>& var_a, const gls::Vector<3>& var_b,
                         gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
+
+void localToneMappingMask(gls::OpenCLContext* glsContext,
+                          const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                          const gls::cl_image_2d<gls::rgba_pixel_float>& guideImage,
+                          float eps,
+                          gls::cl_image_2d<gls::luma_pixel_float>* outputImage);
 
 void denoiseLumaImage(gls::OpenCLContext* glsContext,
                       const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,

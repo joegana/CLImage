@@ -212,10 +212,13 @@ void transformImage(gls::OpenCLContext* glsContext,
 
 void convertTosRGB(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::rgba_pixel_float>& linearImage,
+                  const gls::cl_image_2d<gls::luma_pixel_float>& ltmMaskImage,
                   gls::cl_image_2d<gls::rgba_pixel>* rgbImage,
-                  const gls::Matrix<3, 3>& transform, const DemosaicParameters& demosaicParameters) {
+                  const DemosaicParameters& demosaicParameters) {
     // Load the shader source
     const auto program = glsContext->loadProgram("demosaic");
+
+    const auto& transform = demosaicParameters.rgb_cam;
 
     struct Matrix3x3 {
         cl_float3 m[3];
@@ -227,6 +230,7 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
 
     // Bind the kernel parameters
     auto kernel = cl::KernelFunctor<cl::Image2D,  // linearImage
+                                    cl::Image2D,  // ltmMaskImage
                                     cl::Image2D,  // rgbImage
                                     Matrix3x3,    // transform
                                     RGBConversionParameters    // demosaicParameters
@@ -234,7 +238,7 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(rgbImage->width, rgbImage->height),
-           linearImage.getImage2D(), rgbImage->getImage2D(), clTransform, demosaicParameters.rgbConversionParameters);
+           linearImage.getImage2D(), ltmMaskImage.getImage2D(), rgbImage->getImage2D(), clTransform, demosaicParameters.rgbConversionParameters);
 }
 
 // --- Multiscale Noise Reduction ---
@@ -282,6 +286,29 @@ void denoiseImageGuided(gls::OpenCLContext* glsContext,
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
            inputImage.getImage2D(), cl_var_a, cl_var_b, outputImage->getImage2D());
+}
+
+void localToneMappingMask(gls::OpenCLContext* glsContext,
+                          const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                          const gls::cl_image_2d<gls::rgba_pixel_float>& guideImage,
+                          float eps,
+                          gls::cl_image_2d<gls::luma_pixel_float>* outputImage) {
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    const auto linear_sampler = cl::Sampler(glsContext->clContext(), true, CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_LINEAR);
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
+                                    cl::Image2D,  // guideImage
+                                    float,        // eps
+                                    cl::Image2D,  // outputImage
+                                    cl::Sampler   // linear_sampler
+                                    >(program, "localToneMappingMaskImage");
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+           inputImage.getImage2D(), guideImage.getImage2D(), eps, outputImage->getImage2D(), linear_sampler);
 }
 
 void bayerToRawRGBA(gls::OpenCLContext* glsContext,

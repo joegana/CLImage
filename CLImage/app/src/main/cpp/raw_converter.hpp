@@ -24,6 +24,8 @@ class RawConverter {
 
     std::unique_ptr<PyramidalDenoise<5>> pyramidalDenoise;
 
+    gls::cl_image_2d<gls::luma_pixel_float>::unique_ptr ltmMaskImage;
+
     // RawConverter HighNoise textures
     gls::cl_image_2d<gls::rgba_pixel_float>::unique_ptr rgbaRawImage;
     gls::cl_image_2d<gls::rgba_pixel_float>::unique_ptr denoisedRgbaRawImage;
@@ -33,6 +35,7 @@ class RawConverter {
     gls::cl_image_2d<gls::rgba_pixel>::unique_ptr clsFastRGBImage;
 
     void allocateTextures(gls::OpenCLContext* glsContext, int width, int height);
+    void allocateLtmMaskImage(gls::OpenCLContext* glsContext, int width, int height);
     void allocateHighNoiseTextures(gls::OpenCLContext* glsContext, int width, int height);
     void allocateFastDemosaicTextures(gls::OpenCLContext* glsContext, int width, int height);
 
