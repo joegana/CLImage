@@ -137,7 +137,7 @@ typename PyramidalDenoise<levels>::imageType* PyramidalDenoise<levels>::denoise(
 
 gls::DVector<2> nlfChannel(const gls::DVector<4>& sum, const gls::DVector<4>& sumSq, double N, size_t channel) {
     double b = (N * sumSq[channel] - sum[0] * sum[channel]) / (N * sumSq[0] - sum[0] * sum[0]);
-    double a = (sum[channel] - b * sum[0]) / N;
+    double a = std::max((sum[channel] - b * sum[0]) / N, 0.0);
     return {{ a, b }};
 }
 

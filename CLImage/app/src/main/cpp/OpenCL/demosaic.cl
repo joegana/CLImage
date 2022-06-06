@@ -79,21 +79,20 @@ kernel void scaleRawData(read_only image2d_t rawImage, write_only image2d_t scal
     }
 }
 
-constant float2 sobelXY[3][3] = {
-    { {-1,  1 },  { 0,  2 }, { 1,  1 } },
-    { {-2,  0 } , { 0,  0 }, { 2,  0 } },
-    { {-1, -1 },  { 0, -2 }, { 1, -1 } },
-};
+float2 imageGradient(read_only image2d_t inputImage, int x, int y) {
+    // Average gradient on a 5x5 patch
+    float2 dv = 0;
+    for (int j = -2; j <= 2; j++) {
+        for (int i = -2; i <= 2; i++) {
+            float v_left  = read_imagef(inputImage, (int2)(x+i - 1, j+y)).x;
+            float v_right = read_imagef(inputImage, (int2)(x+i + 1, j+y)).x;
+            float v_up    = read_imagef(inputImage, (int2)(x+i, j+y - 1)).x;
+            float v_down  = read_imagef(inputImage, (int2)(x+i, j+y + 1)).x;
 
-float2 gradientDirection(read_only image2d_t inputImage, int2 imageCoordinates) {
-    float2 sobel = 0;
-    for (int y = 0; y < 3; y++) {
-        for (int x = 0; x < 3; x++) {
-            float sample = read_imagef(inputImage, imageCoordinates + (int2)(x - 1, y - 1)).x;
-            sobel += sobelXY[y][x] * sample;
+            dv += (float2) (fabs(v_left - v_right), fabs(v_up - v_down));
         }
     }
-    return sobel;
+    return 0.04 * dv; // dv / 25
 }
 
 kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t greenImage, int bayerPattern, float lumaVariance) {
@@ -126,37 +125,33 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
 
         float g_ave = (g_left + g_right + g_up + g_down) / 4;
 
-        // Average gradient on a 3x3 patch
-        float2 dv = 0;
-        for (int j = -1; j <= 1; j++) {
-            for (int i = -1; i <= 1; i++) {
-                float v_left  = read_imagef(rawImage, (int2)(x+i - 1, j+y)).x;
-                float v_right = read_imagef(rawImage, (int2)(x+i + 1, j+y)).x;
-                float v_up    = read_imagef(rawImage, (int2)(x+i, j+y - 1)).x;
-                float v_down  = read_imagef(rawImage, (int2)(x+i, j+y + 1)).x;
-
-                dv += (float2) (fabs(v_left - v_right), fabs(v_up - v_down));
-            }
-        }
-        dv /= 9;
-
-        // we're doing edge directed bilinear interpolation on the green channel,
-        // which is a low pass operation (averaging), so we add some signal from the
-        // high frequencies of the observed color channel
+        float2 dv = imageGradient(rawImage, x, y);
 
         // Estimate the whiteness of the pixel value and use that to weight the amount of HF correction
         float cMax = fmax(c_xy, fmax(g_ave, c2_ave));
         float cMin = fmin(c_xy, fmin(g_ave, c2_ave));
         float whiteness = smoothstep(0.25, 0.35, cMin/cMax);
 
-        float sample_h = (g_left + g_right) / 2 + whiteness * (c_xy - (c_left + c_right) / 2) / 4;
-        float sample_v = (g_up + g_down) / 2 + whiteness * (c_xy - (c_up + c_down) / 2) / 4;
-        float sample_flat = g_ave + whiteness * (c_xy - (c_left + c_right + c_up + c_down) / 4) / 4;
+        // Estimate the image gradient strenght with respect to the noise
+        float lumaStdDev = sqrt(lumaVariance * g_ave);
+        float gradient_strenght = smoothstep(0.25 * lumaStdDev, lumaStdDev, length(dv));
 
-        // Estimate the flatness of the image using the raw noise model
-        float eps = sqrt(lumaVariance * g_ave);
-        float flatness = 1 - smoothstep(0.5 * eps, 2 * eps, 16 * fabs(dv.x - dv.y));
-        float sample = mix(dv.x > dv.y ? sample_v : sample_h, sample_flat, flatness);
+        // we're doing edge directed bilinear interpolation on the green channel,
+        // which is a low pass operation (averaging), so we add some signal from the
+        // high frequencies of the observed color channel
+
+        float sample_h = (g_left + g_right) / 2 + gradient_strenght * whiteness * (c_xy - (c_left + c_right) / 2) / 4;
+        float sample_v = (g_up + g_down) / 2 + gradient_strenght * whiteness * (c_xy - (c_up + c_down) / 2) / 4;
+
+        // On areas with strong gradient, simply integrate in the direction of the least gradient
+
+        float high_gradient_interpolation = dv.x > dv.y ? sample_v : sample_h;
+
+        // Otherwise mix the two interpolations according to the gradient's angle. If the gradient is really weak just average the two directions
+
+        float low_gradient_interpolation = mix(sample_v, sample_h, mix(0.5, 2 * atan2pi(dv.y, dv.x), gradient_strenght));
+
+        float sample = mix(low_gradient_interpolation, high_gradient_interpolation, gradient_strenght);
 
         write_imagef(greenImage, imageCoordinates, sample);
     } else {
@@ -200,9 +195,9 @@ kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t
             float c2_bottom_right = g_bottom_right - read_imagef(rawImage, (int2)(x + 1, y + 1)).x;
 
             // Estimate the flatness of the image using the raw noise model
-            float eps = sqrt(chromaVariance * green);
+            float chromaStdDev = sqrt(chromaVariance * green);
             float2 dv = (float2) (fabs(c2_top_left - c2_bottom_right), fabs(c2_top_right - c2_bottom_left));
-            float flatness = 1 - smoothstep(0.25 * eps, eps, length(dv));
+            float flatness = 1 - smoothstep(0.25 * chromaStdDev, chromaStdDev, length(dv));
             float alpha = mix(2 * atan2pi(dv.y, dv.x), 0.5, flatness);
             float c2 = green - mix((c2_top_right + c2_bottom_left) / 2,
                                    (c2_top_left + c2_bottom_right) / 2, alpha);
@@ -1167,6 +1162,10 @@ float3 sharpen(float3 pixel_value, float amount, float radius, image2d_t inputIm
 }
 
 /// ---- Tone Curve ----
+
+float3 algebraic(float3 x) {
+    return x / sqrt(1 + x * x);
+}
 
 float3 sigmoid(float3 x, float s) {
     return 0.5 * (tanh(s * x - 0.3 * s) + 1);

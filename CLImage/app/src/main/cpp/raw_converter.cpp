@@ -112,13 +112,10 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     scaleRawData(_glsContext, *clRawImage, clScaledRawImage.get(), demosaicParameters->bayerPattern, demosaicParameters->scale_mul,
                  demosaicParameters->black_level / 0xffff);
 
-    const float raw_sigma_treshold = 4; // nlf_alpha > 0.5 ? 32 : nlf_alpha > 0.3 ? 8 : 4;
-
-    interpolateGreen(_glsContext, *clScaledRawImage, clGreenImage.get(), demosaicParameters->bayerPattern,
-                     raw_sigma_treshold * sqrt(noiseModel->rawNlf[1]));
+    interpolateGreen(_glsContext, *clScaledRawImage, clGreenImage.get(), demosaicParameters->bayerPattern, sqrt(noiseModel->rawNlf[1]));
 
     interpolateRedBlue(_glsContext, *clScaledRawImage, *clGreenImage, clLinearRGBImageA.get(), demosaicParameters->bayerPattern,
-                       raw_sigma_treshold * sqrt((noiseModel->rawNlf[0] + noiseModel->rawNlf[2]) / 2), rotate_180);
+                       sqrt((noiseModel->rawNlf[0] + noiseModel->rawNlf[2]) / 2), rotate_180);
 
     // --- Image Denoising ---
 
@@ -130,15 +127,15 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     transformImage(_glsContext, *clLinearRGBImageA, clLinearRGBImageA.get(), cam_to_ycbcr);
 
     // False Color Removal
-    applyKernel(_glsContext, "falseColorsRemovalImage", *clLinearRGBImageA, clLinearRGBImageB.get());
+    // applyKernel(_glsContext, "falseColorsRemovalImage", *clLinearRGBImageA, clLinearRGBImageB.get());
 
     if (high_noise_image) {
         std::cout << "despeckleYCbCrImage" << std::endl;
-        applyKernel(_glsContext, "despeckleYCbCrImage", *clLinearRGBImageB, clLinearRGBImageA.get());
+        applyKernel(_glsContext, "despeckleYCbCrImage", *clLinearRGBImageA, clLinearRGBImageB.get());
     }
 
     auto clDenoisedImage = pyramidalDenoise->denoise(_glsContext, &(demosaicParameters->denoiseParameters),
-                                                     high_noise_image ? clLinearRGBImageA.get() : clLinearRGBImageB.get(),
+                                                     high_noise_image ? clLinearRGBImageB.get() : clLinearRGBImageA.get(),
                                                      demosaicParameters->rgb_cam, gmb_position, false,
                                                      &(noiseModel->pyramidNlf));
 

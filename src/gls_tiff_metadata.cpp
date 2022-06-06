@@ -377,6 +377,14 @@ static const TIFFFieldInfo xtiffFieldInfo[] = {
     { TIFFTAG_NOISEREDUCTIONAPPLIED, 1, 1, TIFF_RATIONAL, FIELD_CUSTOM, 1, 0, "NoiseReductionApplied" },
 
     { TIFFTAG_IMAGENUMBER, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, "ImageNumber" },
+
+    { TIFFTAG_CAMERACALIBRATIONSIG, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "CameraCalibrationSig" },
+    { TIFFTAG_PROFILECALIBRATIONSIG, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "ProfileCalibrationSig" },
+    { TIFFTAG_PROFILECOPYRIGHT, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "ProfileCopyright" },
+    { TIFFTAG_PREVIEWAPPLICATIONNAME, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "PreviewApplicationName" },
+    { TIFFTAG_PREVIEWAPPLICATIONVERSION, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "PreviewApplicationVersion" },
+    { TIFFTAG_PREVIEWSETTINGSDIGEST, -1, -1, TIFF_BYTE, FIELD_CUSTOM, 1, 1, "PreviewSettingsDigest" },
+    { TIFFTAG_PREVIEWDATETIME, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "PreviewDateTime" },
  };
 
 static TIFFExtendProc parent_extender = NULL;  // In case we want a chain of extensions
