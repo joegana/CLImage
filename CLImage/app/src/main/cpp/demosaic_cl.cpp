@@ -291,10 +291,18 @@ void denoiseImageGuided(gls::OpenCLContext* glsContext,
 void localToneMappingMask(gls::OpenCLContext* glsContext,
                           const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
                           const gls::cl_image_2d<gls::rgba_pixel_float>& guideImage,
-                          float eps,
+                          float eps, const gls::Matrix<3, 3>& transform,
                           gls::cl_image_2d<gls::luma_pixel_float>* outputImage) {
     // Load the shader source
     const auto program = glsContext->loadProgram("demosaic");
+
+    struct Matrix3x3 {
+        cl_float3 m[3];
+    } clTransform = {{
+        { transform[0][0], transform[0][1], transform[0][2] },
+        { transform[1][0], transform[1][1], transform[1][2] },
+        { transform[2][0], transform[2][1], transform[2][2] }
+    }};
 
     const auto linear_sampler = cl::Sampler(glsContext->clContext(), true, CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_LINEAR);
 
@@ -302,13 +310,14 @@ void localToneMappingMask(gls::OpenCLContext* glsContext,
     auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
                                     cl::Image2D,  // guideImage
                                     float,        // eps
+                                    Matrix3x3,    // transform
                                     cl::Image2D,  // outputImage
                                     cl::Sampler   // linear_sampler
                                     >(program, "localToneMappingMaskImage");
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImage.getImage2D(), guideImage.getImage2D(), eps, outputImage->getImage2D(), linear_sampler);
+           inputImage.getImage2D(), guideImage.getImage2D(), eps, clTransform, outputImage->getImage2D(), linear_sampler);
 }
 
 void bayerToRawRGBA(gls::OpenCLContext* glsContext,

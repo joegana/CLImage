@@ -150,6 +150,9 @@ gls::Matrix<3, 3> cam_ycbcr(const gls::Matrix<3, 3>& rgb_cam);
 
 gls::Vector<3> extractNlfFromColorChecker(gls::image<gls::rgba_pixel_float>* yCbCrImage, const gls::rectangle gmb_position, bool rotate_180, int scale);
 
+extern const gls::Matrix<3, 3> srgb_ycbcr;
+extern const gls::Matrix<3, 3> ycbcr_srgb;
+
 enum GMBColors {
     DarkSkin        = 0,
     LightSkin       = 1,

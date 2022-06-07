@@ -95,10 +95,12 @@ int main(int argc, const char* argv[]) {
 
         auto input_path = std::filesystem::path(argv[1]);
 
+        // calibrateIMX571(&rawConverter, input_path.parent_path());
         // calibrateIMX492(&rawConverter, input_path.parent_path());
         // calibrateCanonEOSRP(&rawConverter, input_path.parent_path());
         // calibrateiPhone11(&rawConverter, input_path.parent_path());
         // calibrateRicohGRIII(&rawConverter, input_path.parent_path());
+        // calibrateSonya6400(&rawConverter, input_path.parent_path());
 
         auto input_dir = std::filesystem::path(input_path.parent_path());
         std::vector<std::filesystem::path> directory_listing;
@@ -115,19 +117,21 @@ int main(int argc, const char* argv[]) {
             LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
 
             // transcodeAdobeDNG(input_path);
-            // const auto rgb_image = demosaicIMX492DNG(&rawConverter, input_path);
-            const auto rgb_image = demosaicCanonEOSRPDNG(&rawConverter, input_path);
+            // const auto rgb_image = demosaicIMX571DNG(&rawConverter, input_path);
+            const auto rgb_image = demosaicSonya6400DNG(&rawConverter, input_path);
+
+            // const auto rgb_image = demosaicCanonEOSRPDNG(&rawConverter, input_path);
             // const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
             // const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
             // const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
-            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.jpg", 95);
+            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_new.jpg", 95);
         }
 
 //        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
 //
 //        // const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
-//        const auto rgb_image = demosaicCanonEOSRPDNG(&rawConverter, input_path);
-//        // const auto rgb_image = demosaicIMX492DNG(&rawConverter, input_path);
+//        // const auto rgb_image = demosaicCanonEOSRPDNG(&rawConverter, input_path);
+//        const auto rgb_image = demosaicIMX492DNG(&rawConverter, input_path);
 //        // const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
 //        rgb_image->write_png_file((input_path.parent_path() / input_path.stem()).string() + "_rgb.png", /*skip_alpha=*/ true);
 

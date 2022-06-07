@@ -117,6 +117,16 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     interpolateRedBlue(_glsContext, *clScaledRawImage, *clGreenImage, clLinearRGBImageA.get(), demosaicParameters->bayerPattern,
                        sqrt((noiseModel->rawNlf[0] + noiseModel->rawNlf[2]) / 2), rotate_180);
 
+    auto rgbImage = clLinearRGBImageA->toImage();
+    gls::image<gls::rgb_pixel> rgbImageOut(rgbImage->width, rgbImage->height);
+    rgbImageOut.apply([&rgbImage](gls::rgb_pixel* p, int x, int y){
+        *p = gls::rgb_pixel {
+            (uint8_t) (255.0f * sqrt((*rgbImage)[y][x][1])),
+            (uint8_t) (255.0f * sqrt((*rgbImage)[y][x][1])),
+            (uint8_t) (255.0f * sqrt((*rgbImage)[y][x][1])) };
+    });
+    rgbImageOut.write_png_file("/Users/fabio/rgb.png");
+
     // --- Image Denoising ---
 
     // Convert linear image to YCbCr
@@ -127,22 +137,24 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     transformImage(_glsContext, *clLinearRGBImageA, clLinearRGBImageA.get(), cam_to_ycbcr);
 
     // False Color Removal
-    // applyKernel(_glsContext, "falseColorsRemovalImage", *clLinearRGBImageA, clLinearRGBImageB.get());
+    // TODO: Make this an optional stage
+    applyKernel(_glsContext, "falseColorsRemovalImage", *clLinearRGBImageA, clLinearRGBImageB.get());
 
     if (high_noise_image) {
         std::cout << "despeckleYCbCrImage" << std::endl;
-        applyKernel(_glsContext, "despeckleYCbCrImage", *clLinearRGBImageA, clLinearRGBImageB.get());
+        applyKernel(_glsContext, "despeckleYCbCrImage", *clLinearRGBImageB, clLinearRGBImageA.get());
     }
 
     auto clDenoisedImage = pyramidalDenoise->denoise(_glsContext, &(demosaicParameters->denoiseParameters),
-                                                     high_noise_image ? clLinearRGBImageB.get() : clLinearRGBImageA.get(),
+                                                     high_noise_image ? clLinearRGBImageA.get() : clLinearRGBImageB.get(),
                                                      demosaicParameters->rgb_cam, gmb_position, false,
                                                      &(noiseModel->pyramidNlf));
 
     std::cout << "pyramidNlf:\n" << std::scientific << noiseModel->pyramidNlf << std::endl;
 
     if (demosaicParameters->rgbConversionParameters.localToneMapping) {
-        localToneMappingMask(_glsContext, *clDenoisedImage, *(pyramidalDenoise->imagePyramid[2]), 0.01, ltmMaskImage.get());
+        localToneMappingMask(_glsContext, *clDenoisedImage, *(pyramidalDenoise->imagePyramid[2]), 0.01,
+                             inverse(cam_to_ycbcr), ltmMaskImage.get());
     }
 
     // Convert result back to camera RGB

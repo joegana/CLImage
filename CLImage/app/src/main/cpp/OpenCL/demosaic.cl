@@ -228,7 +228,7 @@ kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t
             float c1 = green - (c1_left + c1_right) / 2;
             float c2 = green - (c2_up + c2_down) / 2;
 
-            if (color == raw_green2) {
+            if (color == raw_green2 && bayerPattern == rggb) {
                 red = c1;
                 blue = c2;
             } else {
@@ -881,16 +881,9 @@ float4 denoiseRawRGBAGuided(float4 rawVariance, image2d_t inputImage, int2 image
     return filtered_pixel / kernel_norm;
 }
 
-// TODO: use camera specific conversion
-constant float3 ycbcr_srgb[3] = {
-    { 1,  0,       1.5748, },
-    { 1, -0.1873, -0.4681, },
-    { 1,  1.8556,  0       }
-};
-
 // Local Tone Mapping - guideImage is a 8x downsampled version of inputImage
 
-float4 localToneMappingMask(float eps, image2d_t inputImage, image2d_t guideImage, int2 imageCoordinates, sampler_t linear_sampler, float2 posNorm) {
+float4 localToneMappingMask(float eps, Matrix3x3* ycbcr_srgb, image2d_t inputImage, image2d_t guideImage, int2 imageCoordinates, sampler_t linear_sampler, float2 posNorm) {
     const float3 input = read_imagef(inputImage, imageCoordinates).x;
     const float luma = input.x;
 
@@ -928,24 +921,26 @@ float4 localToneMappingMask(float eps, image2d_t inputImage, image2d_t guideImag
     float filteredPixel = filtered_pixel / kernel_norm;
 
     // YCbCr -> RGB version of the input pixel, for highlights compression
-    const float3 rgb = (float3) (dot(ycbcr_srgb[0], input), dot(ycbcr_srgb[1], input), dot(ycbcr_srgb[2], input));
+    float3 rgb = (float3) (dot(ycbcr_srgb->m[0], input),
+                           dot(ycbcr_srgb->m[1], input),
+                           dot(ycbcr_srgb->m[2], input));
 
     // LTM curve computed in Log space
-    const float detail = 1.2;
+    const float detail = 1.1;
     const float highlightsClipping = min(length(sqrt(rgb)), 1.0);
-    const float shadows = mix(1.3, 1.0, highlightsClipping);
+    const float shadows = mix(1.2, 1.0, highlightsClipping);
     const float ltmBoost = pow(filteredPixel, 1.0 / shadows) * pow(luma / filteredPixel, detail) / luma;
 
     // Avoid boosting highlights
-    return mix(ltmBoost, 1.0, highlightsClipping);
+    return ltmBoost; // mix(ltmBoost, 1.0, highlightsClipping);
 }
 
 kernel void localToneMappingMaskImage(read_only image2d_t inputImage, read_only image2d_t guideImage, float eps,
-                                  write_only image2d_t outputImage, sampler_t linear_sampler) {
+                                      Matrix3x3 ycbcr_srgb, write_only image2d_t outputImage, sampler_t linear_sampler) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
     const float2 posNorm = 1.0 / convert_float2(get_image_dim(outputImage));
 
-    float4 denoisedPixel = localToneMappingMask(eps, inputImage, guideImage, imageCoordinates, linear_sampler, posNorm);
+    float4 denoisedPixel = localToneMappingMask(eps, &ycbcr_srgb, inputImage, guideImage, imageCoordinates, linear_sampler, posNorm);
 
     write_imagef(outputImage, imageCoordinates, denoisedPixel);
 }

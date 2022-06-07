@@ -24,11 +24,17 @@
 gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX492DNG(RawConverter* rawConverter, const std::filesystem::path& input_path);
 void calibrateIMX492(RawConverter* rawConverter, const std::filesystem::path& input_dir);
 
+gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX571DNG(RawConverter* rawConverter, const std::filesystem::path& input_path);
+void calibrateIMX571(RawConverter* rawConverter, const std::filesystem::path& input_dir);
+
 gls::image<gls::rgb_pixel>::unique_ptr demosaicLeicaQ2DNG(RawConverter* rawConverter, const std::filesystem::path& input_path);
 void calibrateLeicaQ2(RawConverter* rawConverter, const std::filesystem::path& input_dir);
 
 gls::image<gls::rgb_pixel>::unique_ptr demosaicCanonEOSRPDNG(RawConverter* rawConverter, const std::filesystem::path& input_path);
 void calibrateCanonEOSRP(RawConverter* rawConverter, const std::filesystem::path& input_dir);
+
+gls::image<gls::rgb_pixel>::unique_ptr demosaicSonya6400DNG(RawConverter* rawConverter, const std::filesystem::path& input_path);
+void calibrateSonya6400(RawConverter* rawConverter, const std::filesystem::path& input_dir);
 
 void calibrateRicohGRIII(RawConverter* rawConverter, const std::filesystem::path& input_dir);
 gls::image<gls::rgb_pixel>::unique_ptr demosaicRicohGRIII2DNG(RawConverter* rawConverter, const std::filesystem::path& input_path);
