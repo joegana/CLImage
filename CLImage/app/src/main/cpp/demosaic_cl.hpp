@@ -66,9 +66,14 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
                    gls::cl_image_2d<gls::rgba_pixel>* rgbImage,
                    const DemosaicParameters& demosaicParameters);
 
+void despeckleImage(gls::OpenCLContext* glsContext,
+                    const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                    const gls::Vector<3>& var_a, const gls::Vector<3>& var_b,
+                    gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
+
 void denoiseImage(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                  const gls::Vector<3>& sigma_a, const gls::Vector<3>& sigma_b, bool tight,
+                  const gls::Vector<3>& var_a, const gls::Vector<3>& var_b, bool tight,
                   gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
 
 void denoiseImageGuided(gls::OpenCLContext* glsContext,
@@ -105,5 +110,10 @@ void denoiseRawRGBAImage(gls::OpenCLContext* glsContext,
 void despeckleRawRGBAImage(gls::OpenCLContext* glsContext,
                            const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
                            gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
+
+void gaussianBlurImage(gls::OpenCLContext* glsContext,
+                       const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                       float radius,
+                       gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
 
 #endif /* demosaic_cl_hpp */

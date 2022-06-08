@@ -1020,17 +1020,20 @@ gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, 
 
 // From https://john-chapman.github.io/2019/03/29/convolution.html
 
-void KernelOptimizeBilinear2d(int _width, const float* _weightsIn, float weightsOut_[],
-                              std::pair<float, float>* offsetsOut_) {
-    const int outWidth = _width / 2 + 1;
-    const int halfWidth = _width / 2;
+void KernelOptimizeBilinear2d(int width, const std::vector<float>& weightsIn,
+                              std::vector<std::tuple</* w */ float, /* x */ float, /* y */ float>>* weightsOut) {
+    const int outWidth = width / 2 + 1;
+    const int halfWidth = width / 2;
+
+    weightsOut->resize(outWidth * outWidth);
+
     int row, col;
-    for (row = 0; row < _width - 1; row += 2) {
-        for (col = 0; col < _width - 1; col += 2) {
-            float w1 = _weightsIn[(row * _width) + col];
-            float w2 = _weightsIn[(row * _width) + col + 1];
-            float w3 = _weightsIn[((row + 1) * _width) + col];
-            float w4 = _weightsIn[((row + 1) * _width) + col + 1];
+    for (row = 0; row < width - 1; row += 2) {
+        for (col = 0; col < width - 1; col += 2) {
+            float w1 = weightsIn[(row * width) + col];
+            float w2 = weightsIn[(row * width) + col + 1];
+            float w3 = weightsIn[((row + 1) * width) + col];
+            float w4 = weightsIn[((row + 1) * width) + col + 1];
             float w5 = w1 + w2 + w3 + w4;
             float x1 = (float)(col - halfWidth);
             float x2 = (float)(col - halfWidth + 1);
@@ -1040,36 +1043,32 @@ void KernelOptimizeBilinear2d(int _width, const float* _weightsIn, float weights
             float y3 = (y1 * w1 + y2 * w3) / (w1 + w3);
 
             const int k = (row / 2) * outWidth + (col / 2);
-            weightsOut_[k] = w5;
-            offsetsOut_[k] = {x3, y3};
+            (*weightsOut)[k] = {w5, x3, y3};
         }
 
-        float w1 = _weightsIn[(row * _width) + col];
-        float w2 = _weightsIn[((row + 1) * _width) + col];
+        float w1 = weightsIn[(row * width) + col];
+        float w2 = weightsIn[((row + 1) * width) + col];
         float w3 = w1 + w2;
         float y1 = (float)(row - halfWidth);
         float y2 = (float)(row - halfWidth + 1);
         float y3 = (y1 * w1 + y2 * w2) / w3;
 
         const int k = (row / 2) * outWidth + (col / 2);
-        weightsOut_[k] = w3;
-        offsetsOut_[k] = {(float)(col - halfWidth), y3};
+        (*weightsOut)[k] = {w3, (float)(col - halfWidth), y3};
     }
 
-    for (col = 0; col < _width - 1; col += 2) {
-        float w1 = _weightsIn[(row * _width) + col];
-        float w2 = _weightsIn[(row * _width) + col + 1];
+    for (col = 0; col < width - 1; col += 2) {
+        float w1 = weightsIn[(row * width) + col];
+        float w2 = weightsIn[(row * width) + col + 1];
         float w3 = w1 + w2;
         float x1 = (float)(col - halfWidth);
         float x2 = (float)(col - halfWidth + 1);
         float x3 = (x1 * w1 + x2 * w2) / w3;
 
         const int k = (row / 2) * outWidth + (col / 2);
-        weightsOut_[k] = w3;
-        offsetsOut_[k] = {x3, (float)(row - halfWidth)};
+        (*weightsOut)[k] = {w3, x3, (float)(row - halfWidth)};
     }
 
     const int k = (row / 2) * outWidth + (col / 2);
-    weightsOut_[k] = _weightsIn[(row * _width) + col];
-    offsetsOut_[k] = {_width / 2, _width / 2};
+    (*weightsOut)[k] = {weightsIn[(row * width) + col], width / 2, width / 2};
 }

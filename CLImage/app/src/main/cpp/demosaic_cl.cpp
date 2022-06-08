@@ -241,6 +241,28 @@ void convertTosRGB(gls::OpenCLContext* glsContext,
            linearImage.getImage2D(), ltmMaskImage.getImage2D(), rgbImage->getImage2D(), clTransform, demosaicParameters.rgbConversionParameters);
 }
 
+void despeckleImage(gls::OpenCLContext* glsContext,
+                    const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                    const gls::Vector<3>& var_a, const gls::Vector<3>& var_b,
+                    gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
+                                    cl_float3,    // var_a
+                                    cl_float3,    // var_b
+                                    cl::Image2D   // outputImage
+                                    >(program, "despeckleImage");
+
+    cl_float3 cl_var_a = { var_a[0], var_a[1], var_a[2] };
+    cl_float3 cl_var_b = { var_b[0], var_b[1], var_b[2] };
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+           inputImage.getImage2D(), cl_var_a, cl_var_b, outputImage->getImage2D());
+}
+
 // --- Multiscale Noise Reduction ---
 // https://www.cns.nyu.edu/pub/lcv/rajashekar08a.pdf
 
@@ -392,4 +414,64 @@ void despeckleRawRGBAImage(gls::OpenCLContext* glsContext,
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
            inputImage.getImage2D(), outputImage->getImage2D());
+}
+
+void gaussianBlurImage(gls::OpenCLContext* glsContext,
+                       const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                       float radius,
+                       gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    const bool ordinary_gaussian = false;
+    if (ordinary_gaussian) {
+        // Bind the kernel parameters
+        auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
+                                        float,        // radius
+                                        cl::Image2D   // outputImage
+                                        >(program, "gaussianBlurImage");
+
+        // Schedule the kernel on the GPU
+        kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+               inputImage.getImage2D(), radius, outputImage->getImage2D());
+    } else {
+        const int kernelSize = (int) (2 * ceil(2.5 * radius) + 1);
+
+        std::vector<float> weights(kernelSize*kernelSize);
+        for (int y = -kernelSize / 2, i = 0; y <= kernelSize / 2; y++) {
+            for (int x = -kernelSize / 2; x <= kernelSize / 2; x++, i++) {
+                weights[i] = exp(-((float)(x * x + y * y) / (2 * radius * radius)));
+            }
+        }
+        std::cout << "Gaussian Kernel weights: " << std::endl;
+        for (const auto& w : weights) {
+            std::cout << w << std::endl;
+        }
+
+        const int outWidth = kernelSize / 2 + 1;
+        const int weightsCount = outWidth * outWidth;
+        std::vector<std::tuple<float, float, float>> weightsOut(weightsCount);
+        KernelOptimizeBilinear2d(kernelSize, weights, &weightsOut);
+
+        std::cout << "Bilinear Gaussian Kernel weights and offsets: " << std::endl;
+        for (const auto& [w, x, y] : weightsOut) {
+            std::cout << w << " @ (" << x << " : " << y << "), " << std::endl;
+        }
+
+        cl::Buffer weightsBuffer(weightsOut.begin(), weightsOut.end(), /* readOnly */ true, /* useHostPtr */ false);
+
+        const auto linear_sampler = cl::Sampler(glsContext->clContext(), true, CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_LINEAR);
+
+        // Bind the kernel parameters
+        auto kernel = cl::KernelFunctor<cl::Image2D,    // inputImage
+                                        int,            // samples
+                                        cl::Buffer,     // weights
+                                        cl::Image2D,    // outputImage
+                                        cl::Sampler     // linear_sampler
+                                        >(program, "sampledConvolution");
+
+        // Schedule the kernel on the GPU
+        kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+               inputImage.getImage2D(), weightsCount, weightsBuffer, outputImage->getImage2D(), linear_sampler);
+    }
 }

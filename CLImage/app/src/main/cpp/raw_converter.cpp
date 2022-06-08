@@ -71,7 +71,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     NoiseModel* noiseModel = &demosaicParameters->noiseModel;
 
-    const bool high_noise_image = demosaicParameters->noiseLevel > 0.6;
+    const bool high_noise_image = true; // demosaicParameters->noiseLevel > 0.6;
 
     LOG_INFO(TAG) << "NoiseLevel: " << demosaicParameters->noiseLevel << std::endl;
 
@@ -97,17 +97,17 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     // --- Image Demosaicing ---
 
-    if (high_noise_image) {
-        std::cout << "denoiseRawRGBAImage" << std::endl;
-
-        bayerToRawRGBA(_glsContext, *clRawImage, rgbaRawImage.get(), demosaicParameters->bayerPattern);
-
-        despeckleRawRGBAImage(_glsContext,
-                              *rgbaRawImage,
-                              denoisedRgbaRawImage.get());
-
-        rawRGBAToBayer(_glsContext, *denoisedRgbaRawImage, clRawImage.get(), demosaicParameters->bayerPattern);
-    }
+//    if (high_noise_image) {
+//        std::cout << "denoiseRawRGBAImage" << std::endl;
+//
+//        bayerToRawRGBA(_glsContext, *clRawImage, rgbaRawImage.get(), demosaicParameters->bayerPattern);
+//
+//        despeckleRawRGBAImage(_glsContext,
+//                              *rgbaRawImage,
+//                              denoisedRgbaRawImage.get());
+//
+//        rawRGBAToBayer(_glsContext, *denoisedRgbaRawImage, clRawImage.get(), demosaicParameters->bayerPattern);
+//    }
 
     scaleRawData(_glsContext, *clRawImage, clScaledRawImage.get(), demosaicParameters->bayerPattern, demosaicParameters->scale_mul,
                  demosaicParameters->black_level / 0xffff);
@@ -141,14 +141,20 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     applyKernel(_glsContext, "falseColorsRemovalImage", *clLinearRGBImageA, clLinearRGBImageB.get());
 
     if (high_noise_image) {
-        std::cout << "despeckleYCbCrImage" << std::endl;
-        applyKernel(_glsContext, "despeckleYCbCrImage", *clLinearRGBImageB, clLinearRGBImageA.get());
+        std::cout << "despeckleImage" << std::endl;
+        const auto& np = noiseModel->pyramidNlf[0];
+        despeckleImage(_glsContext, *clLinearRGBImageB, { np[0], np[1], np[2] }, { np[3], np[4], np[5] }, clLinearRGBImageA.get());
     }
 
     auto clDenoisedImage = pyramidalDenoise->denoise(_glsContext, &(demosaicParameters->denoiseParameters),
                                                      high_noise_image ? clLinearRGBImageA.get() : clLinearRGBImageB.get(),
                                                      demosaicParameters->rgb_cam, gmb_position, false,
                                                      &(noiseModel->pyramidNlf));
+
+//    if (high_noise_image) {
+//        gaussianBlurImage(_glsContext, *clDenoisedImage, 0.5, clLinearRGBImageA.get());
+//        clDenoisedImage = clLinearRGBImageA.get();
+//    }
 
     std::cout << "pyramidNlf:\n" << std::scientific << noiseModel->pyramidNlf << std::endl;
 

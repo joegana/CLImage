@@ -198,26 +198,55 @@ std::pair<float, std::array<DenoiseParameters, 5>> Sonya6400DenoiseParameters(in
             .sharpening = std::lerp(1.5f, 1.0f, nlf_alpha)
         },
         {
-            .luma = 1.0f * std::lerp(1.0f, 4.0f, nlf_alpha),
+            .luma = 1.0f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
             .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
             .sharpening = std::lerp(1.2f, 0.8f, nlf_alpha),
         },
         {
-            .luma = 0.5f * std::lerp(1.0f, 2.0f, nlf_alpha),
+            .luma = 0.5f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
             .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
             .sharpening = 1
         },
         {
-            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha),
+            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
             .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
             .sharpening = 1
         },
         {
-            .luma = 0.125f * std::lerp(1.0f, 2.0f, nlf_alpha),
+            .luma = 0.125f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
             .chroma = std::lerp(1.0f, 4.0f, nlf_alpha),
             .sharpening = 1
         }
     }};
+
+//    // A7RIV
+//    std::array<DenoiseParameters, 5> denoiseParameters = {{
+//        {
+//            .luma = 0.125f * std::lerp(1.0f, 4.0f, nlf_alpha),
+//            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
+//            .sharpening = std::lerp(1.5f, 1.0f, nlf_alpha)
+//        },
+//        {
+//            .luma = 1.0f * std::lerp(1.0f, 4.0f, nlf_alpha),
+//            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
+//            .sharpening = std::lerp(1.2f, 0.8f, nlf_alpha),
+//        },
+//        {
+//            .luma = 0.5f * std::lerp(1.0f, 2.0f, nlf_alpha),
+//            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
+//            .sharpening = 1
+//        },
+//        {
+//            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha),
+//            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
+//            .sharpening = 1
+//        },
+//        {
+//            .luma = 0.125f * std::lerp(1.0f, 2.0f, nlf_alpha),
+//            .chroma = std::lerp(1.0f, 4.0f, nlf_alpha),
+//            .sharpening = 1
+//        }
+//    }};
 
     return { nlf_alpha, denoiseParameters };
 }

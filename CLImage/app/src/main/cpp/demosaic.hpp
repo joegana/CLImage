@@ -203,4 +203,6 @@ void colorcheck(const std::array<RawPatchStats, 24>& rawStats);
 gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
                                 const gls::Vector<4>& scale_mul, float white, float black, BayerPattern bayerPattern);
 
+void KernelOptimizeBilinear2d(int width, const std::vector<float>& weightsIn,
+                              std::vector<std::tuple</* w */ float, /* x */ float, /* y */ float>>* weightsOut);
 #endif /* demosaic_hpp */
