@@ -302,6 +302,7 @@ float unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
 
     demosaicParameters->black_level = black_level_vec.empty() ? 0 : black_level_vec[0];
     demosaicParameters->white_level = white_level_vec.empty() ? 0xffff : white_level_vec[0];
+    demosaicParameters->exposure_multiplier = std::min(exposure_multiplier, 1.0f);
 
     demosaicParameters->bayerPattern = std::memcmp(cfa_pattern.data(), "\00\01\01\02", 4) == 0 ? BayerPattern::rggb
                                      : std::memcmp(cfa_pattern.data(), "\02\01\01\00", 4) == 0 ? BayerPattern::bggr
@@ -339,7 +340,7 @@ float unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
         auto minmax = std::minmax_element(std::begin(pre_mul), std::end(pre_mul));
         for (int c = 0; c < 4; c++) {
             int pre_mul_idx = c == 3 ? 1 : c;
-            (demosaicParameters->scale_mul)[c] = exposure_multiplier * (pre_mul[pre_mul_idx] / *minmax.first) * 65535.0 / (demosaicParameters->white_level - demosaicParameters->black_level);
+            (demosaicParameters->scale_mul)[c] = std::max(exposure_multiplier, 1.0f) * (pre_mul[pre_mul_idx] / *minmax.first) * 65535.0 / (demosaicParameters->white_level - demosaicParameters->black_level);
         }
 
         auto cam_to_ycbcr = cam_ycbcr(demosaicParameters->rgb_cam);
@@ -365,7 +366,7 @@ float unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
     auto minmax = std::minmax_element(std::begin(pre_mul), std::end(pre_mul));
     for (int c = 0; c < 4; c++) {
         int pre_mul_idx = c == 3 ? 1 : c;
-        (demosaicParameters->scale_mul)[c] = exposure_multiplier * (pre_mul[pre_mul_idx] / *minmax.first) * 65535.0 / (demosaicParameters->white_level - demosaicParameters->black_level);
+        (demosaicParameters->scale_mul)[c] = std::max(exposure_multiplier, 1.0f) * (pre_mul[pre_mul_idx] / *minmax.first) * 65535.0 / (demosaicParameters->white_level - demosaicParameters->black_level);
     }
     printf("scale_mul: %f, %f, %f, %f\n", (demosaicParameters->scale_mul)[0], (demosaicParameters->scale_mul)[1], (demosaicParameters->scale_mul)[2], (demosaicParameters->scale_mul)[3]);
 

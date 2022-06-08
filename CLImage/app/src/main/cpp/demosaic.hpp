@@ -47,11 +47,19 @@ typedef struct NoiseModel {
     gls::Matrix<5, 6> pyramidNlf;   // NLF for interpolated data on a 5-level pyramid
 } NoiseModel;
 
+typedef struct LTMParameters {
+    float guidedFilterEps = 0.01;
+    float shadows = 1.25;
+    float highlights = 1.0;
+    float detail = 1.1;
+} LTMParameters;
+
 typedef struct DemosaicParameters {
     // Basic Debayering Parameters
     BayerPattern bayerPattern;
     float black_level;
     float white_level;
+    float exposure_multiplier;
     gls::Vector<4> scale_mul;
     gls::Matrix<3, 3> rgb_cam;
 
@@ -63,6 +71,9 @@ typedef struct DemosaicParameters {
 
     // Camera Color Space to RGB Parameters
     RGBConversionParameters rgbConversionParameters;
+
+    // Local Tone Mapping Parameters
+    LTMParameters lTMParameters;
 } DemosaicParameters;
 
 const gls::point bayerOffsets[4][4] = {

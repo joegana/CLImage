@@ -159,12 +159,12 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     std::cout << "pyramidNlf:\n" << std::scientific << noiseModel->pyramidNlf << std::endl;
 
     if (demosaicParameters->rgbConversionParameters.localToneMapping) {
-        localToneMappingMask(_glsContext, *clDenoisedImage, *(pyramidalDenoise->imagePyramid[2]), 0.01,
-                             inverse(cam_to_ycbcr), ltmMaskImage.get());
+        localToneMappingMask(_glsContext, *clDenoisedImage, *(pyramidalDenoise->imagePyramid[2]), demosaicParameters->lTMParameters,
+                             inverse(cam_to_ycbcr) * demosaicParameters->exposure_multiplier, ltmMaskImage.get());
     }
 
     // Convert result back to camera RGB
-    transformImage(_glsContext, *clDenoisedImage, clDenoisedImage, inverse(cam_to_ycbcr));
+    transformImage(_glsContext, *clDenoisedImage, clDenoisedImage, inverse(cam_to_ycbcr) * demosaicParameters->exposure_multiplier);
 
     // --- Image Post Processing ---
 
