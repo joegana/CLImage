@@ -228,7 +228,7 @@ kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t
             float c1 = green - (c1_left + c1_right) / 2;
             float c2 = green - (c2_up + c2_down) / 2;
 
-            if (color == raw_green2 && bayerPattern == rggb) {
+            if (color == (bayerPattern == bggr || bayerPattern == grbg ? raw_green : raw_green2)) {
                 red = c1;
                 blue = c2;
             } else {
