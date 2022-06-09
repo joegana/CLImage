@@ -928,7 +928,7 @@ float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb,
                            dot(ycbcr_srgb->m[2], input));
 
     // LTM curve computed in Log space
-    const float highlightsClipping = min(length(sqrt(rgb)), 1.0);
+    const float highlightsClipping = min(sqrt(length(rgb)), 1.0);
     const float tonalCompression = mix(ltmParameters->shadows, ltmParameters->highlights, highlightsClipping);
     return pow(filteredPixel, 1.0 / tonalCompression) * pow(luma / filteredPixel, ltmParameters->detail) / luma;
 }
@@ -1242,7 +1242,7 @@ kernel void convertTosRGB(read_only image2d_t linearImage, read_only image2d_t l
     if (ltmBoost > 1) {
         // Modified Naik and Murthy’s method for preserving hue/saturation under luminance changes
         const float luma = 0.2126 * rgb.x + 0.7152 * rgb.y + 0.0722 * rgb.z; // BT.709-2 (sRGB) luma primaries
-        rgb = mix(rgb * ltmBoost, luma < 1 ? 1 - (1.0 - rgb) * (1 - ltmBoost * luma) / (1 - luma) : rgb, pow(luma, 0.75));
+        rgb = mix(rgb * ltmBoost, luma < 1 ? 1 - (1.0 - rgb) * (1 - ltmBoost * luma) / (1 - luma) : rgb, pow(luma, 0.5));
     } else if (ltmBoost < 1) {
         rgb *= ltmBoost;
     }

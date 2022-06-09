@@ -346,45 +346,45 @@ void writeMetadataForTag(TIFF* tif, const tiff_metadata* metadata, ttag_t tag) {
 // DNG Extension Tags
 
 static const TIFFFieldInfo xtiffFieldInfo[] = {
-    { TIFFTAG_FORWARDMATRIX1, -1, -1, TIFF_SRATIONAL, FIELD_CUSTOM, 1, 1, "ForwardMatrix1" },
-    { TIFFTAG_FORWARDMATRIX2, -1, -1, TIFF_SRATIONAL, FIELD_CUSTOM, 1, 1, "ForwardMatrix2" },
+    { TIFFTAG_FORWARDMATRIX1, -1, -1, TIFF_SRATIONAL, FIELD_CUSTOM, 1, 1, (char *) "ForwardMatrix1" },
+    { TIFFTAG_FORWARDMATRIX2, -1, -1, TIFF_SRATIONAL, FIELD_CUSTOM, 1, 1, (char *) "ForwardMatrix2" },
 
-    { TIFFTAG_PROFILENAME, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "ProfileName" },
-    { TIFFTAG_PROFILELOOKTABLEDIMS, 3, 3, TIFF_LONG, FIELD_CUSTOM, 1, 0, "ProfileLookTableDims" },
-    { TIFFTAG_PROFILELOOKTABLEDATA, -1, -1, TIFF_FLOAT, FIELD_CUSTOM, 1, 1, "ProfileLookTableData" },
-    { TIFFTAG_PROFILELOOKTABLEENCODING, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, "ProfileLookTableEncoding" },
-    { TIFFTAG_DEFAULTUSERCROP, 4, 4, TIFF_RATIONAL, FIELD_CUSTOM, 1, 0, "DefaultUserCrop" },
+    { TIFFTAG_PROFILENAME, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, (char *) "ProfileName" },
+    { TIFFTAG_PROFILELOOKTABLEDIMS, 3, 3, TIFF_LONG, FIELD_CUSTOM, 1, 0, (char *) "ProfileLookTableDims" },
+    { TIFFTAG_PROFILELOOKTABLEDATA, -1, -1, TIFF_FLOAT, FIELD_CUSTOM, 1, 1, (char *) "ProfileLookTableData" },
+    { TIFFTAG_PROFILELOOKTABLEENCODING, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, (char *) "ProfileLookTableEncoding" },
+    { TIFFTAG_DEFAULTUSERCROP, 4, 4, TIFF_RATIONAL, FIELD_CUSTOM, 1, 0, (char *) "DefaultUserCrop" },
 
-    { TIFFTAG_RATING, 1, 1, TIFF_SHORT, FIELD_CUSTOM, 1, 0, "Rating" },
-    { TIFFTAG_RATINGPERCENT, 1, 1, TIFF_SHORT, FIELD_CUSTOM, 1, 0, "RatingPercent" },
-    { TIFFTAG_TIFFEPSTANDARDID, -1, -1, TIFF_BYTE, FIELD_CUSTOM, 1, 1, "TIFF-EP Standard ID" },
+    { TIFFTAG_RATING, 1, 1, TIFF_SHORT, FIELD_CUSTOM, 1, 0, (char *) "Rating" },
+    { TIFFTAG_RATINGPERCENT, 1, 1, TIFF_SHORT, FIELD_CUSTOM, 1, 0, (char *) "RatingPercent" },
+    { TIFFTAG_TIFFEPSTANDARDID, -1, -1, TIFF_BYTE, FIELD_CUSTOM, 1, 1, (char *) "TIFF-EP Standard ID" },
 
-    { TIFFTAG_PROFILETONECURVE, -1, -1, TIFF_FLOAT, FIELD_CUSTOM, 1, 1, "ProfileToneCurve" },
-    { TIFFTAG_PROFILEEMBEDPOLICY, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, "ProfileEmbedPolicy" },
-    { TIFFTAG_ORIGINALDEFAULTFINALSIZE, 2, 2, TIFF_LONG, FIELD_CUSTOM, 1, 0, "OriginalDefaultFinalSize" },
-    { TIFFTAG_ORIGINALBESTQUALITYSIZE, 2, 2, TIFF_LONG, FIELD_CUSTOM, 1, 0, "OriginalBestQualitySize" },
-    { TIFFTAG_ORIGINALDEFAULTCROPSIZE, 2, 2, TIFF_RATIONAL, FIELD_CUSTOM, 1, 0, "OriginalDefaultCropSize" },
-    { TIFFTAG_NEWRAWIMAGEDIGEST, 16, 16, TIFF_BYTE, FIELD_CUSTOM, 1, 0, "NewRawImageDigest" },
+    { TIFFTAG_PROFILETONECURVE, -1, -1, TIFF_FLOAT, FIELD_CUSTOM, 1, 1, (char *) "ProfileToneCurve" },
+    { TIFFTAG_PROFILEEMBEDPOLICY, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, (char *) "ProfileEmbedPolicy" },
+    { TIFFTAG_ORIGINALDEFAULTFINALSIZE, 2, 2, TIFF_LONG, FIELD_CUSTOM, 1, 0, (char *) "OriginalDefaultFinalSize" },
+    { TIFFTAG_ORIGINALBESTQUALITYSIZE, 2, 2, TIFF_LONG, FIELD_CUSTOM, 1, 0, (char *) "OriginalBestQualitySize" },
+    { TIFFTAG_ORIGINALDEFAULTCROPSIZE, 2, 2, TIFF_RATIONAL, FIELD_CUSTOM, 1, 0, (char *) "OriginalDefaultCropSize" },
+    { TIFFTAG_NEWRAWIMAGEDIGEST, 16, 16, TIFF_BYTE, FIELD_CUSTOM, 1, 0, (char *) "NewRawImageDigest" },
 
-    { TIFFTAG_PREVIEWCOLORSPACE, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, "PreviewColorSpace" },
+    { TIFFTAG_PREVIEWCOLORSPACE, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, (char *) "PreviewColorSpace" },
 
-    { TIFFTAG_ASSHOTPROFILENAME, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "AsShotProfileName" },
-    { TIFFTAG_PROFILEHUESATMAPDIMS, 3, 3, TIFF_LONG, FIELD_CUSTOM, 1, 0, "ProfileHueSatMapDims" },
-    { TIFFTAG_PROFILEHUESATMAPDATA1, -1, -1, TIFF_FLOAT, FIELD_CUSTOM, 1, 1, "ProfileHueSatMapData1" },
-    { TIFFTAG_PROFILEHUESATMAPDATA2, -1, -1, TIFF_FLOAT, FIELD_CUSTOM, 1, 1, "ProfileHueSatMapData2" },
+    { TIFFTAG_ASSHOTPROFILENAME, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, (char *) "AsShotProfileName" },
+    { TIFFTAG_PROFILEHUESATMAPDIMS, 3, 3, TIFF_LONG, FIELD_CUSTOM, 1, 0, (char *) "ProfileHueSatMapDims" },
+    { TIFFTAG_PROFILEHUESATMAPDATA1, -1, -1, TIFF_FLOAT, FIELD_CUSTOM, 1, 1, (char *) "ProfileHueSatMapData1" },
+    { TIFFTAG_PROFILEHUESATMAPDATA2, -1, -1, TIFF_FLOAT, FIELD_CUSTOM, 1, 1, (char *) "ProfileHueSatMapData2" },
 
-    { TIFFTAG_NOISEPROFILE, 2, 2, TIFF_FLOAT, FIELD_CUSTOM, 1, 0, "NoiseProfile" },
-    { TIFFTAG_NOISEREDUCTIONAPPLIED, 1, 1, TIFF_RATIONAL, FIELD_CUSTOM, 1, 0, "NoiseReductionApplied" },
+    { TIFFTAG_NOISEPROFILE, 2, 2, TIFF_FLOAT, FIELD_CUSTOM, 1, 0, (char *) "NoiseProfile" },
+    { TIFFTAG_NOISEREDUCTIONAPPLIED, 1, 1, TIFF_RATIONAL, FIELD_CUSTOM, 1, 0, (char *) "NoiseReductionApplied" },
 
-    { TIFFTAG_IMAGENUMBER, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, "ImageNumber" },
+    { TIFFTAG_IMAGENUMBER, 1, 1, TIFF_LONG, FIELD_CUSTOM, 1, 0, (char *) "ImageNumber" },
 
-    { TIFFTAG_CAMERACALIBRATIONSIG, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "CameraCalibrationSig" },
-    { TIFFTAG_PROFILECALIBRATIONSIG, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "ProfileCalibrationSig" },
-    { TIFFTAG_PROFILECOPYRIGHT, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "ProfileCopyright" },
-    { TIFFTAG_PREVIEWAPPLICATIONNAME, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "PreviewApplicationName" },
-    { TIFFTAG_PREVIEWAPPLICATIONVERSION, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "PreviewApplicationVersion" },
-    { TIFFTAG_PREVIEWSETTINGSDIGEST, -1, -1, TIFF_BYTE, FIELD_CUSTOM, 1, 1, "PreviewSettingsDigest" },
-    { TIFFTAG_PREVIEWDATETIME, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, "PreviewDateTime" },
+    { TIFFTAG_CAMERACALIBRATIONSIG, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, (char *) "CameraCalibrationSig" },
+    { TIFFTAG_PROFILECALIBRATIONSIG, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, (char *) "ProfileCalibrationSig" },
+    { TIFFTAG_PROFILECOPYRIGHT, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, (char *) "ProfileCopyright" },
+    { TIFFTAG_PREVIEWAPPLICATIONNAME, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, (char *) "PreviewApplicationName" },
+    { TIFFTAG_PREVIEWAPPLICATIONVERSION, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, (char *) "PreviewApplicationVersion" },
+    { TIFFTAG_PREVIEWSETTINGSDIGEST, -1, -1, TIFF_BYTE, FIELD_CUSTOM, 1, 1, (char *) "PreviewSettingsDigest" },
+    { TIFFTAG_PREVIEWDATETIME, -1, -1, TIFF_ASCII, FIELD_CUSTOM, 1, 0, (char *) "PreviewDateTime" },
  };
 
 static TIFFExtendProc parent_extender = NULL;  // In case we want a chain of extensions
