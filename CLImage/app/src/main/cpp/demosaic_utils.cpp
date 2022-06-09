@@ -515,8 +515,8 @@ void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float 
 //
 //    }
 
-    static int file_count = 0;
-    green_channel.write_png_file("/Users/fabio/green_channel" + std::to_string(file_count++) + ".png", false);
+//    static int file_count = 0;
+//    green_channel.write_png_file("/Users/fabio/green_channel" + std::to_string(file_count++) + ".png", false);
 }
 
 // Collect mean and variance of ColorChecker patches
@@ -781,14 +781,14 @@ gls::Vector<3> extractNlfFromColorChecker(gls::image<gls::rgba_pixel_float>* yCb
     gls::Vector<3> nlf_parameters = estimateNlfParameters(yCbCrImage, position, rotate_180);
     std::cout << "Scale " << scale << " nlf parameters: " << std::setprecision(4) << std::scientific << nlf_parameters[0] << ", " << nlf_parameters[1] << ", " << nlf_parameters[2] << std::endl;
 
-    gls::image<gls::rgb_pixel> output(yCbCrImage->width, yCbCrImage->height);
-    for (int y = 0; y < output.height; y++) {
-        for (int x = 0; x < output.width; x++) {
-            const auto& p = (*yCbCrImage)[y][x];
-            output[y][x] = {clamp_uint8(255 * p[0]), clamp_uint8(128 * p[1] + 127), clamp_uint8(128 * p[2] + 127)};
-        }
-    }
-    output.write_png_file("/Users/fabio/ColorChecker" + std::to_string(scale) + ".png");
+//    gls::image<gls::rgb_pixel> output(yCbCrImage->width, yCbCrImage->height);
+//    for (int y = 0; y < output.height; y++) {
+//        for (int x = 0; x < output.width; x++) {
+//            const auto& p = (*yCbCrImage)[y][x];
+//            output[y][x] = {clamp_uint8(255 * p[0]), clamp_uint8(128 * p[1] + 127), clamp_uint8(128 * p[2] + 127)};
+//        }
+//    }
+//    output.write_png_file("/Users/fabio/ColorChecker" + std::to_string(scale) + ".png");
 
     return nlf_parameters;
 }
