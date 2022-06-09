@@ -50,8 +50,6 @@ constant const int2 bayerOffsets[4][4] = {
 
 #endif
 
-#if defined(__APPLE__)
-
 // Apple's half float fail to compile with the system's min/max functions
 
 #define min(a, b) ({__typeof__(a) _a = (a); \
@@ -64,8 +62,6 @@ constant const int2 bayerOffsets[4][4] = {
 
 #define abs(a) ({__typeof__(a) _a = (a); \
     _a > 0 ? _a : -_a;})
-
-#endif
 
 // Work on one Quad (2x2) at a time
 kernel void scaleRawData(read_only image2d_t rawImage, write_only image2d_t scaledRawImage,

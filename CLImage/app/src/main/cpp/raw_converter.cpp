@@ -89,11 +89,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     auto t_start = std::chrono::high_resolution_clock::now();
 #endif
     // Copy input data to the OpenCL input buffer
-    auto cpuRawImage = clRawImage->mapImage();
-    for (int y = 0; y < clRawImage->height; y++) {
-        std::copy(rawImage[y], &rawImage[y][clRawImage->width], cpuRawImage[y]);
-    }
-    clRawImage->unmapImage(cpuRawImage);
+    clRawImage->copyPixelsFrom(rawImage);
 
     // --- Image Demosaicing ---
 
@@ -189,11 +185,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::fastDemosaicImage(const gls::im
     LOG_INFO(TAG) << "Begin Fast Demosaicing (GPU)..." << std::endl;
 
     // Copy input data to the OpenCL input buffer
-    auto cpuRawImage = clRawImage->mapImage();
-    for (int y = 0; y < clRawImage->height; y++) {
-        std::copy(rawImage[y], &rawImage[y][clRawImage->width], cpuRawImage[y]);
-    }
-    clRawImage->unmapImage(cpuRawImage);
+    clRawImage->copyPixelsFrom(rawImage);
 
     // --- Image Demosaicing ---
 
