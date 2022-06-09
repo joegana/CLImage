@@ -1230,7 +1230,6 @@ kernel void convertTosRGB(read_only image2d_t linearImage, read_only image2d_t l
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
     float3 pixel_value = read_imagef(linearImage, imageCoordinates).xyz;
-    float ltmBoost = rgbConversionParameters.localToneMapping ? read_imagef(ltmMaskImage, imageCoordinates).x : 1;
 
     // pixel_value = saturationBoost(pixel_value, rgbConversionParameters.saturation);
     // pixel_value = desaturateBlacks(pixel_value);
@@ -1240,7 +1239,19 @@ kernel void convertTosRGB(read_only image2d_t linearImage, read_only image2d_t l
                            dot(transform.m[1], pixel_value),
                            dot(transform.m[2], pixel_value));
 
-    write_imagef(rgbImage, imageCoordinates, (float4) (clamp(toneCurve(rgb, rgbConversionParameters.toneCurveSlope) * ltmBoost, 0.0, 1.0), 0.0));
+    rgb = clamp(toneCurve(rgb, rgbConversionParameters.toneCurveSlope), 0.0, 1.0);
+
+    float ltmBoost = rgbConversionParameters.localToneMapping ? read_imagef(ltmMaskImage, imageCoordinates).x : 1;
+
+    if (ltmBoost > 1) {
+        // Modified Naik and Murthy’s method for preserving hue/saturation under luminance changes
+        const float luma = 0.2126 * rgb.x + 0.7152 * rgb.y + 0.0722 * rgb.z; // BT.709-2 (sRGB) luma primaries
+        rgb = mix(rgb * ltmBoost, luma < 1 ? 1 - (1.0 - rgb) * (1 - ltmBoost * luma) / (1 - luma) : rgb, pow(luma, 0.75));
+    } else if (ltmBoost < 1) {
+        rgb *= ltmBoost;
+    }
+
+    write_imagef(rgbImage, imageCoordinates, (float4) (clamp(rgb, 0.0, 1.0), 0.0));
 }
 
 kernel void resample(read_only image2d_t inputImage, write_only image2d_t outputImage, sampler_t linear_sampler) {

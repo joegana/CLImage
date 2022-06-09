@@ -73,7 +73,7 @@ typedef struct DemosaicParameters {
     RGBConversionParameters rgbConversionParameters;
 
     // Local Tone Mapping Parameters
-    LTMParameters lTMParameters;
+    LTMParameters ltmParameters;
 } DemosaicParameters;
 
 const gls::point bayerOffsets[4][4] = {
