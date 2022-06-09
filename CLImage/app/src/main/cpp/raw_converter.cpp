@@ -113,16 +113,6 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     interpolateRedBlue(_glsContext, *clScaledRawImage, *clGreenImage, clLinearRGBImageA.get(), demosaicParameters->bayerPattern,
                        sqrt((noiseModel->rawNlf[0] + noiseModel->rawNlf[2]) / 2), rotate_180);
 
-    auto rgbImage = clLinearRGBImageA->toImage();
-    gls::image<gls::rgb_pixel> rgbImageOut(rgbImage->width, rgbImage->height);
-    rgbImageOut.apply([&rgbImage](gls::rgb_pixel* p, int x, int y){
-        *p = gls::rgb_pixel {
-            (uint8_t) (255.0f * sqrt((*rgbImage)[y][x][1])),
-            (uint8_t) (255.0f * sqrt((*rgbImage)[y][x][1])),
-            (uint8_t) (255.0f * sqrt((*rgbImage)[y][x][1])) };
-    });
-    rgbImageOut.write_png_file("/Users/fabio/rgb.png");
-
     // --- Image Denoising ---
 
     // Convert linear image to YCbCr
