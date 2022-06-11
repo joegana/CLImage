@@ -259,95 +259,98 @@ kernel void fastDebayer(read_only image2d_t rawImage, write_only image2d_t rgbIm
     write_imagef(rgbImage, imageCoordinates, (float4)(red, (green + green2) / 2, blue, 0.0));
 }
 
-/// ---- Median Filter ----
+/// ---- Median Filter 3x3 ----
 
-void median_load_data_3x3(float v[9], image2d_t inputImage, int2 imageCoordinates) {
-    for(int x = -1; x <= 1; x++) {
-        for(int y = -1; y <= 1; y++) {
-            v[(x + 1) * 3 + (y + 1)] = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).x;
-        }
-    }
-}
+#define s(a, b)                         \
+  ({ typedef __typeof__ (a) type_of_a;  \
+     type_of_a temp = a;                \
+     a = min(a, b);                     \
+     b = max(temp, b); })
 
-void median_load_data_3x3_chroma(float2 v[9], image2d_t inputImage, int2 imageCoordinates) {
-    for(int x = -1; x <= 1; x++) {
-        for(int y = -1; y <= 1; y++) {
-            v[(x + 1) * 3 + (y + 1)] = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).yz;
-        }
-    }
-}
+#define minMax6(a0,a1,a2,a3,a4,a5) s(a0,a1);s(a2,a3);s(a4,a5);s(a0,a2);s(a1,a3);s(a0,a4);s(a3,a5);
+#define minMax5(a0,a1,a2,a3,a4) s(a0,a1);s(a2,a3);s(a0,a2);s(a1,a3);s(a0,a4);s(a3,a4);
+#define minMax4(a0,a1,a2,a3) s(a0,a1);s(a2,a3);s(a0,a2);s(a1,a3);
+#define minMax3(a0,a1,a2) s(a0,a1);s(a0,a2);s(a1,a2);
 
-void median_load_data_3x3x3(float3 v[9], image2d_t inputImage, int2 imageCoordinates) {
-    for(int x = -1; x <= 1; x++) {
-        for(int y = -1; y <= 1; y++) {
-            v[(x + 1) * 3 + (y + 1)] = read_imagef(inputImage, imageCoordinates + (int2)(x, y)).xyz;
-        }
-    }
-}
+#define fast_median3x3(inputImage, imageCoordinates)               \
+({                                                                 \
+    medianPixelType a0, a1, a2, a3, a4, a5;                        \
+                                                                   \
+    a0 = readImage(inputImage, imageCoordinates + (int2)(0, -1));  \
+    a1 = readImage(inputImage, imageCoordinates + (int2)(1, -1));  \
+    a2 = readImage(inputImage, imageCoordinates + (int2)(0, 0));   \
+    a3 = readImage(inputImage, imageCoordinates + (int2)(1, 0));   \
+    a4 = readImage(inputImage, imageCoordinates + (int2)(0, 1));   \
+    a5 = readImage(inputImage, imageCoordinates + (int2)(1, 1));   \
+    minMax6(a0, a1, a2, a3, a4, a5);                               \
+    a0 = readImage(inputImage, imageCoordinates + (int2)(-1, 1));  \
+    minMax5(a0, a1, a2, a3, a4);                                   \
+    a0 = readImage(inputImage, imageCoordinates + (int2)(-1, 0));  \
+    minMax4(a0, a1, a2, a3);                                       \
+    a0 = readImage(inputImage, imageCoordinates + (int2)(-1, -1)); \
+    minMax3(a0, a1, a2);                                           \
+    a1;                                                            \
+})
 
-#define s2(a, b)                temp = a; a = min(a, b); b = max(temp, b);
-#define mn3(a, b, c)            s2(a, b); s2(a, c);
-#define mx3(a, b, c)            s2(b, c); s2(a, c);
+#define readImage(image, pos)  read_imageh(image, pos).xyz;
 
-#define mnmx3(a, b, c)          mx3(a, b, c); s2(a, b);                                     // 3 exchanges
-#define mnmx4(a, b, c, d)       s2(a, b); s2(c, d); s2(a, c); s2(b, d);                     // 4 exchanges
-#define mnmx5(a, b, c, d, e)    s2(a, b); s2(c, d); mn3(a, c, e); mx3(b, d, e);             // 6 exchanges
-#define mnmx6(a, b, c, d, e, f) s2(a, d); s2(b, e); s2(c, f); mn3(a, b, c); mx3(d, e, f);   // 7 exchanges
-
-#define median_3x3()                                                            \
-    /* Starting with a subset of size 6, remove the min and max each time */    \
-    mnmx6(v[0], v[1], v[2], v[3], v[4], v[5]);                                  \
-    mnmx5(v[1], v[2], v[3], v[4], v[6]);                                        \
-    mnmx4(v[2], v[3], v[4], v[7]);                                              \
-    mnmx3(v[3], v[4], v[8]);
-
-
-void median_sort_data_3x3(float v[9]) {
-    float temp;
-    median_3x3();
-}
-
-void median_sort_data_3x3x2(float2 v[9]) {
-    float2 temp;
-    median_3x3();
-}
-
-void median_sort_data_3x3x3(float3 v[9]) {
-    float3 temp;
-    median_3x3();
-}
-
-#undef s2
-#undef mn3
-#undef mx3
-
-#undef mnmx3
-#undef mnmx4
-#undef mnmx5
-#undef mnmx6
-
-float3 median_filter_3x3(image2d_t inputImage, int2 imageCoordinates) {
-    float3 v[9];
-    median_load_data_3x3x3(v, inputImage, imageCoordinates);
-    median_sort_data_3x3x3(v);
-    return v[4];
-}
-
-float2 median_filter_3x3_chroma(image2d_t inputImage, int2 imageCoordinates) {
-    float2 v[9];
-    median_load_data_3x3_chroma(v, inputImage, imageCoordinates);
-    median_sort_data_3x3x2(v);
-    return v[4];
-}
-
-kernel void medianFilterImage(read_only image2d_t inputImage, write_only image2d_t denoisedImage) {
+kernel void medianFilterImage3x3(read_only image2d_t inputImage, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float2 denoisedPixel = median_filter_3x3_chroma(inputImage, imageCoordinates);
+    typedef half3 medianPixelType;
 
-    float luma = read_imagef(inputImage, imageCoordinates).x;
-    write_imagef(denoisedImage, imageCoordinates, (float4) (luma, denoisedPixel, 0.0));
+    half3 median = fast_median3x3(inputImage, imageCoordinates);
+
+    write_imageh(denoisedImage, imageCoordinates, (half4) (median, 0));
 }
+
+#undef readImage
+
+#define readImage(image, pos)                              \
+    ({                                                     \
+        half3 p = read_imageh(image, pos).xyz;             \
+                                                           \
+        half v = p.x;                                      \
+        secMax = v <= firstMax && v > secMax ? v : secMax; \
+        secMax = v > firstMax ? firstMax : secMax;         \
+        firstMax = v > firstMax ? v : firstMax;            \
+                                                           \
+        secMin = v >= firstMin && v < secMin ? v : secMin; \
+        secMin = v < firstMin ? firstMin : secMin;         \
+        firstMin = v < firstMin ? v : firstMin;            \
+                                                           \
+        if (all(pos == imageCoordinates)) {                \
+            sample = v;                                    \
+        }                                                  \
+                                                           \
+        p.yz;                                              \
+    })
+
+kernel void despeckleLumaMedianChromaImage(read_only image2d_t inputImage, float3 var_a, float3 var_b, write_only image2d_t denoisedImage) {
+    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
+
+    typedef half2 medianPixelType;
+    half sample = 0, firstMax = 0, secMax = 0;
+    half firstMin = (float) 0xffff, secMin = (float) 0xffff;
+
+    half2 median = fast_median3x3(inputImage, imageCoordinates);
+
+    half sigma = sqrt(var_a.x + var_b.x * sample);
+    half minVal = mix(secMin, firstMin, smoothstep(sigma, 4 * sigma, secMin - firstMin));
+    half maxVal = mix(secMax, firstMax, smoothstep(sigma, 4 * sigma, firstMax - secMax));
+
+    sample = clamp(sample, minVal, maxVal);
+
+    write_imageh(denoisedImage, imageCoordinates, (half4) (sample, median, 0));
+}
+
+#undef readImage
+
+#undef minMax6
+#undef minMax5
+#undef minMax4
+#undef minMax3
+#undef s
 
 // ---- Despeckle ----
 
@@ -874,6 +877,44 @@ float4 denoiseRawRGBAGuided(float4 rawVariance, image2d_t inputImage, int2 image
     return filtered_pixel / kernel_norm;
 }
 
+// TODO: Finish implementing a straight guided filter
+
+kernel void guidedFilterAB(read_only image2d_t pImage, read_only image2d_t I_Image, float eps, write_only image2d_t abImage) {
+    const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
+
+    const int radius = 5;
+    const int count = (2 * radius + 1) * (2 * radius + 1);
+
+    float mean_I = 0;
+    float mean_II = 0;
+    float mean_p = 0;
+    float mean_Ip = 0;
+
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
+            float I = read_imagef(I_Image, imageCoordinates + (float2)(x, y)).x;
+            mean_I += I;
+            mean_II += I * I;
+
+            float p = read_imagef(pImage, imageCoordinates + (float2)(x, y)).x;
+            mean_p += p;
+            mean_Ip = I * p;
+        }
+    }
+    mean_I /= count;
+    mean_II /= count;
+    mean_p /= count;
+    mean_Ip /= count;
+
+    float var_I = mean_II - mean_I * mean_I;
+    float cov_Ip = mean_Ip - mean_I * mean_p;   // this is the covariance of (I, p) in each local patch.
+
+    float a = cov_Ip / (var_I + eps);   // Eqn. (5) in the paper;
+    float b = mean_p - a * mean_I;      // Eqn. (6) in the paper;
+
+    write_imagef(abImage, imageCoordinates, (float4)(a, b, 0, 0));
+}
+
 // Local Tone Mapping - guideImage is a 8x downsampled version of inputImage
 
 typedef struct LTMParameters {
@@ -920,7 +961,7 @@ float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb,
             kernel_norm += sampleWeight;
         }
     }
-    float filteredPixel = filtered_pixel / kernel_norm;
+    filtered_pixel /= kernel_norm;
 
     // YCbCr -> RGB version of the input pixel, for highlights compression
     float3 rgb = (float3) (dot(ycbcr_srgb->m[0], input),
@@ -930,7 +971,7 @@ float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb,
     // LTM curve computed in Log space
     const float highlightsClipping = min(sqrt(length(rgb)), 1.0);
     const float tonalCompression = mix(ltmParameters->shadows, ltmParameters->highlights, highlightsClipping);
-    return pow(filteredPixel, 1.0 / tonalCompression) * pow(luma / filteredPixel, ltmParameters->detail) / luma;
+    return pow(filtered_pixel, 1.0 / tonalCompression) * pow(luma / filtered_pixel, ltmParameters->detail) / luma;
 }
 
 kernel void localToneMappingMaskImage(read_only image2d_t inputImage, read_only image2d_t guideImage, LTMParameters ltmParameters,

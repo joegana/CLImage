@@ -71,7 +71,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     NoiseModel* noiseModel = &demosaicParameters->noiseModel;
 
-    const bool high_noise_image = true; // demosaicParameters->noiseLevel > 0.6;
+    const bool high_noise_image = false; // demosaicParameters->noiseLevel > 0.6;
 
     LOG_INFO(TAG) << "NoiseLevel: " << demosaicParameters->noiseLevel << std::endl;
 
@@ -93,17 +93,17 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     // --- Image Demosaicing ---
 
-//    if (high_noise_image) {
-//        std::cout << "denoiseRawRGBAImage" << std::endl;
-//
-//        bayerToRawRGBA(_glsContext, *clRawImage, rgbaRawImage.get(), demosaicParameters->bayerPattern);
-//
-//        despeckleRawRGBAImage(_glsContext,
-//                              *rgbaRawImage,
-//                              denoisedRgbaRawImage.get());
-//
-//        rawRGBAToBayer(_glsContext, *denoisedRgbaRawImage, clRawImage.get(), demosaicParameters->bayerPattern);
-//    }
+    if (high_noise_image) {
+        std::cout << "denoiseRawRGBAImage" << std::endl;
+
+        bayerToRawRGBA(_glsContext, *clRawImage, rgbaRawImage.get(), demosaicParameters->bayerPattern);
+
+        despeckleRawRGBAImage(_glsContext,
+                              *rgbaRawImage,
+                              denoisedRgbaRawImage.get());
+
+        rawRGBAToBayer(_glsContext, *denoisedRgbaRawImage, clRawImage.get(), demosaicParameters->bayerPattern);
+    }
 
     scaleRawData(_glsContext, *clRawImage, clScaledRawImage.get(), demosaicParameters->bayerPattern, demosaicParameters->scale_mul,
                  demosaicParameters->black_level / 0xffff);
@@ -122,18 +122,18 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     transformImage(_glsContext, *clLinearRGBImageA, clLinearRGBImageA.get(), cam_to_ycbcr);
 
+    // Luma and Chroma Despeckling
+    std::cout << "despeckleImage" << std::endl;
+    const auto& np = noiseModel->pyramidNlf[0];
+    despeckleImage(_glsContext, *clLinearRGBImageA, { np[0], np[1], np[2] }, { np[3], np[4], np[5] }, clLinearRGBImageB.get());
+
     // False Color Removal
     // TODO: Make this an optional stage
-    applyKernel(_glsContext, "falseColorsRemovalImage", *clLinearRGBImageA, clLinearRGBImageB.get());
-
-    if (high_noise_image) {
-        std::cout << "despeckleImage" << std::endl;
-        const auto& np = noiseModel->pyramidNlf[0];
-        despeckleImage(_glsContext, *clLinearRGBImageB, { np[0], np[1], np[2] }, { np[3], np[4], np[5] }, clLinearRGBImageA.get());
-    }
+    std::cout << "falseColorsRemovalImage" << std::endl;
+    applyKernel(_glsContext, "falseColorsRemovalImage", *clLinearRGBImageB, clLinearRGBImageA.get());
 
     auto clDenoisedImage = pyramidalDenoise->denoise(_glsContext, &(demosaicParameters->denoiseParameters),
-                                                     high_noise_image ? clLinearRGBImageA.get() : clLinearRGBImageB.get(),
+                                                     clLinearRGBImageA.get(),
                                                      demosaicParameters->rgb_cam, gmb_position, false,
                                                      &(noiseModel->pyramidNlf));
 
@@ -145,7 +145,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     std::cout << "pyramidNlf:\n" << std::scientific << noiseModel->pyramidNlf << std::endl;
 
     if (demosaicParameters->rgbConversionParameters.localToneMapping) {
-        localToneMappingMask(_glsContext, *clDenoisedImage, *(pyramidalDenoise->imagePyramid[2]), demosaicParameters->ltmParameters,
+        localToneMappingMask(_glsContext, *clDenoisedImage, *(pyramidalDenoise->denoisedImagePyramid[3]), demosaicParameters->ltmParameters,
                              inverse(cam_to_ycbcr) * demosaicParameters->exposure_multiplier, ltmMaskImage.get());
     }
 

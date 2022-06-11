@@ -253,7 +253,7 @@ void despeckleImage(gls::OpenCLContext* glsContext,
                                     cl_float3,    // var_a
                                     cl_float3,    // var_b
                                     cl::Image2D   // outputImage
-                                    >(program, "despeckleImage");
+                                    >(program, "despeckleLumaMedianChromaImage");
 
     cl_float3 cl_var_a = { var_a[0], var_a[1], var_a[2] };
     cl_float3 cl_var_b = { var_b[0], var_b[1], var_b[2] };
