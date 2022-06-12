@@ -312,7 +312,6 @@ void denoiseImageGuided(gls::OpenCLContext* glsContext,
 
 void localToneMappingMask(gls::OpenCLContext* glsContext,
                           const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                          const gls::cl_image_2d<gls::rgba_pixel_float>& guideImage,
                           const LTMParameters& ltmParameters, const gls::Matrix<3, 3>& transform,
                           gls::cl_image_2d<gls::luma_pixel_float>* outputImage) {
     // Load the shader source
@@ -330,7 +329,6 @@ void localToneMappingMask(gls::OpenCLContext* glsContext,
 
     // Bind the kernel parameters
     auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
-                                    cl::Image2D,  // guideImage
                                     LTMParameters,// ltmParameters
                                     Matrix3x3,    // transform
                                     cl::Image2D,  // outputImage
@@ -339,7 +337,7 @@ void localToneMappingMask(gls::OpenCLContext* glsContext,
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImage.getImage2D(), guideImage.getImage2D(), ltmParameters, clTransform,
+           inputImage.getImage2D(), ltmParameters, clTransform,
            outputImage->getImage2D(), linear_sampler);
 }
 

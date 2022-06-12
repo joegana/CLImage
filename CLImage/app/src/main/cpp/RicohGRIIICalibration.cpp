@@ -245,7 +245,7 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicRicohGRIII2DNG(RawConverter* rawC
         .ltmParameters = {
             .guidedFilterEps = 0.01,
             .shadows = 1.25,
-            .highlights = 1.0,
+            .highlights = 1,
             .detail = 1.1,
         }
     };
