@@ -71,7 +71,7 @@ kernel void scaleRawData(read_only image2d_t rawImage, write_only image2d_t scal
     for (int c = 0; c < 4; c++) {
         int2 o = bayerOffsets[bayerPattern][c];
         write_imagef(scaledRawImage, imageCoordinates + (int2) (o.x, o.y),
-                     clamp(scaleMul[c] * (read_imagef(rawImage, imageCoordinates + (int2) (o.x, o.y)).x - blackLevel), 0.0, 1.0));
+                     scaleMul[c] * (read_imagef(rawImage, imageCoordinates + (int2) (o.x, o.y)).x - blackLevel));
     }
 }
 
@@ -257,6 +257,40 @@ kernel void fastDebayer(read_only image2d_t rawImage, write_only image2d_t rgbIm
     float green2 = read_imagef(rawImage, 2 * imageCoordinates + g2).x;
 
     write_imagef(rgbImage, imageCoordinates, (float4)(red, (green + green2) / 2, blue, 0.0));
+}
+
+kernel void blendHighlightsImage(read_only image2d_t inputImage, float clip, write_only image2d_t outputImage) {
+    constant float3 trans[3] = {
+        {1, 1, 1},
+        {1.7320508, -1.7320508, 0},
+        {-1, -1, 2},
+    };
+    constant float3 itrans[3] = {
+        {1, 0.8660254, -0.5},
+        {1, -0.8660254, -0.5},
+        {1, 0, 1},
+    };
+
+    const int2 imageCoordinates = (int2)(get_global_id(0), get_global_id(1));
+
+    float3 pixel = read_imagef(inputImage, imageCoordinates).xyz;
+    if (any(pixel > clip)) {
+        float3 cam[2] = {pixel, min(pixel, clip)};
+
+        float3 lab[2];
+        float sum[2];
+        for (int i = 0; i < 2; i++) {
+            lab[i] = (float3)(dot(trans[0], cam[i]), dot(trans[1], cam[i]), dot(trans[2], cam[i]));
+            sum[i] = dot(lab[i].yz, lab[i].yz);
+        }
+        float chratio = sum[0] > 0 ? sqrt(sum[1] / sum[0]) : 1;
+        lab[0].yz *= chratio;
+
+        pixel =
+            (float3)(dot(itrans[0], lab[0]), dot(itrans[1], lab[0]), dot(itrans[2], lab[0])) / 3;
+    }
+
+    write_imagef(outputImage, imageCoordinates, (float4)(pixel, 0.0));
 }
 
 /// ---- Median Filter 3x3 ----
@@ -931,7 +965,7 @@ float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb,
     const int radius = 5;
     const int count = (2 * radius + 1) * (2 * radius + 1);
 
-    // One channel Fast Guided Filter to estimate the image's Illumination
+    // One channel Fast Guided Filter to estimate the image's illuminance
 
     float sum = 0;
     float sumSq = 0;
@@ -961,8 +995,8 @@ float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb,
             kernel_norm += sampleWeight;
         }
     }
-    float illumination = filtered_pixel / kernel_norm;
-    float reflectance = luma / illumination;
+    float illuminance = filtered_pixel / kernel_norm;
+    float reflectance = luma / illuminance;
 
     // YCbCr -> RGB version of the input pixel, for highlights compression
     float3 rgb = (float3) (dot(ycbcr_srgb->m[0], input),
@@ -972,7 +1006,7 @@ float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb,
     // LTM curve computed in Log space
     const float highlightsClipping = min(sqrt(2 * length(rgb)), 1.0);
     const float tonalCompression = mix(ltmParameters->shadows, ltmParameters->highlights, highlightsClipping);
-    return pow(illumination, 1.0 / tonalCompression) * pow(reflectance, ltmParameters->detail) / luma;
+    return pow(illuminance, 1.0 / tonalCompression) * pow(reflectance, ltmParameters->detail) / luma;
 }
 
 kernel void localToneMappingMaskImage(read_only image2d_t inputImage, LTMParameters ltmParameters,
@@ -1224,6 +1258,11 @@ float3 algebraic(float3 x) {
     return x / sqrt(1 + x * x);
 }
 
+float3 superSigma(float3 x) {
+    float z = 2;
+    return copysign(powr(tanh(powr(abs(0.6 * x), z)), 1/z), x);
+}
+
 float3 sigmoid(float3 x, float s) {
     return 0.5 * (tanh(s * x - 0.3 * s) + 1);
 }
@@ -1289,7 +1328,7 @@ kernel void convertTosRGB(read_only image2d_t linearImage, read_only image2d_t l
         rgb *= ltmBoost;
     }
 
-    write_imagef(rgbImage, imageCoordinates, (float4) (clamp(rgb, 0.0, 1.0), 0.0));
+    write_imagef(rgbImage, imageCoordinates, (float4) (rgb, 0.0));
 }
 
 kernel void resample(read_only image2d_t inputImage, write_only image2d_t outputImage, sampler_t linear_sampler) {

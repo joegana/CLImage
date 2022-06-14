@@ -115,4 +115,9 @@ void gaussianBlurImage(gls::OpenCLContext* glsContext,
                        float radius,
                        gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
 
+void blendHighlightsImage(gls::OpenCLContext* glsContext,
+                          const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                          float clip,
+                          gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
+
 #endif /* demosaic_cl_hpp */

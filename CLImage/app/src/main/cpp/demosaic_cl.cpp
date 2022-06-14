@@ -474,3 +474,21 @@ void gaussianBlurImage(gls::OpenCLContext* glsContext,
                inputImage.getImage2D(), weightsCount, weightsBuffer, outputImage->getImage2D(), linear_sampler);
     }
 }
+
+void blendHighlightsImage(gls::OpenCLContext* glsContext,
+                          const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                          float clip,
+                          gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
+                                    float,        // clip
+                                    cl::Image2D   // outputImage
+                                    >(program, "blendHighlightsImage");
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
+           inputImage.getImage2D(), clip, outputImage->getImage2D());
+}
