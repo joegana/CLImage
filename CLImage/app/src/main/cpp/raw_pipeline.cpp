@@ -86,6 +86,88 @@ void transcodeAdobeDNG(const std::filesystem::path& input_path) {
     saveStrippedDNG(output_file, *inputImage, dng_metadata, exif_metadata);
 }
 
+gls::image<gls::rgb_pixel>::unique_ptr demosaicPlainFile(RawConverter* rawConverter, const std::filesystem::path& input_path) {
+    DemosaicParameters demosaicParameters = {
+        .rgbConversionParameters = {
+            .localToneMapping = false
+        },
+    };
+
+    gls::tiff_metadata dng_metadata, exif_metadata;
+    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
+
+    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr /* &gmb_position */, /*rotate_180=*/ false);
+
+    return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, &demosaicParameters, nullptr /* &gmb_position */, /*rotate_180=*/ false));
+}
+
+void processKodakSet(gls::OpenCLContext* glsContext, const std::filesystem::path& input_path) {
+    auto input_dir = std::filesystem::path(input_path.parent_path());
+    std::vector<std::filesystem::path> directory_listing;
+    std::copy(std::filesystem::directory_iterator(input_dir), std::filesystem::directory_iterator(),
+              std::back_inserter(directory_listing));
+    std::sort(directory_listing.begin(), directory_listing.end());
+
+    for (const auto& input_path : directory_listing) {
+        RawConverter rawConverter(glsContext);
+
+        const auto extension = input_path.extension();
+        if ((extension != ".png") || input_path.filename().string().starts_with(".")) {
+            continue;
+        }
+
+        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
+
+        const auto rgb = gls::image<gls::rgb_pixel>::read_png_file(input_path);
+
+        gls::image<gls::luma_pixel_16> bayer(rgb->width, rgb->height);
+
+        auto offsets = bayerOffsets[grbg];
+
+        enum { red = 0, green = 1, blue = 2, green2 = 3 };
+
+        bayer.apply([&offsets, &rgb](gls::luma_pixel_16* p, int x, int y) {
+            for (int c : { red, green, blue, green2 }) {
+                if ((x & 1) == (offsets[c].x & 1) && (y & 1) == (offsets[c].y & 1)) {
+                    switch (c) {
+                        case red:
+                            p->luma = 0xff * (*rgb)[y][x].red;
+                            break;
+                        case blue:
+                            p->luma = 0xff * (*rgb)[y][x].blue;
+                            break;
+                        case green:
+                        case green2:
+                            p->luma = 0xff * (*rgb)[y][x].green;
+                            break;
+                    }
+                    break;
+                }
+            }
+        });
+
+        gls::tiff_metadata dng_metadata;
+        dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{
+             3.2404542, -1.5371385, -0.4985314,
+            -0.9692660,  1.8760108,  0.04160,
+             0.0556434, -0.2040259,  1.05752
+        }});
+        dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1, 1, 1 } });
+        dng_metadata.insert({ TIFFTAG_CFAREPEATPATTERNDIM, std::vector<uint16_t>{ 2, 2 } });
+        dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 0, 2, 1 } });
+        dng_metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
+        dng_metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xffff } });
+
+        auto dng_file = (input_path.parent_path() / input_path.stem()).string() + ".dng";
+        bayer.write_dng_file(dng_file, /*compression=*/ gls::NONE, &dng_metadata);
+
+        const auto demosaiced = demosaicPlainFile(&rawConverter, dng_file);
+
+        auto demosaiced_png_file = (input_path.parent_path() / input_path.stem()).string() + "_demosaiced.PNG";
+        demosaiced->write_png_file(demosaiced_png_file);
+    }
+}
+
 int main(int argc, const char* argv[]) {
     printf("RawPipeline Test!\n");
 
@@ -117,13 +199,13 @@ int main(int argc, const char* argv[]) {
             LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
 
             // transcodeAdobeDNG(input_path);
-            // const auto rgb_image = demosaicIMX571DNG(&rawConverter, input_path);
+            const auto rgb_image = demosaicIMX571DNG(&rawConverter, input_path);
             // const auto rgb_image = demosaicSonya6400DNG(&rawConverter, input_path);
             // const auto rgb_image = demosaicCanonEOSRPDNG(&rawConverter, input_path);
             // const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
-            const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
+            // const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
             // const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
-            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_ltm_new_highlights_3.jpg", 95);
+            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_wb_ltm_blacks_1.0_d.jpg", 95);
         }
 
 //        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
