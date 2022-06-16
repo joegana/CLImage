@@ -122,7 +122,7 @@ add_executable(
         raw_converter.cpp
         ThreadPool.cpp
         raw_pipeline.cpp
-        IMX492Calibration.cpp
+        IMX571Calibration.cpp
         iPhone11Calibration.cpp
         LeicaQ2Calibration.cpp
         RicohGRIIICalibration.cpp
