@@ -50,18 +50,18 @@ class cl_image_2d : public cl_image<T> {
     typedef std::unique_ptr<cl_image_2d<T>> unique_ptr;
 
     cl_image_2d(cl::Context context, int _width, int _height)
-        : cl_image<T>(_width, _height), _payload(buildPayload(context, _width, _height)) {}
+        : cl_image<T>(_width, _height), _payload(buildPayload(context, _width, _height, 0)) {}
 
     cl_image_2d(cl::Context context, const gls::image<T>& other)
         : cl_image<T>(other.width, other.height),
-          _payload(buildPayload(context, other.width, other.height, other.pixels().data())) {}
+          _payload(buildPayload(context, other.width, other.height, other.stride, other.pixels().data())) {}
 
     virtual ~cl_image_2d() {}
 
-    static inline std::unique_ptr<payload> buildPayload(cl::Context context, int width, int height, T* data = nullptr) {
+    static inline std::unique_ptr<payload> buildPayload(cl::Context context, int width, int height, int stride, T* data = nullptr) {
         cl_mem_flags mem_flags = CL_MEM_READ_WRITE | (data ? CL_MEM_COPY_HOST_PTR : 0);
         return std::make_unique<payload>(payload{cl::Image2D(context, mem_flags, cl_image<T>::ImageFormat(), width,
-                                                             height, 0, data)});
+                                                             height, stride * cl_image<T>::pixel_size, data)});
     }
 
     static inline unique_ptr fromImage(cl::Context context, const gls::image<T>& other) {
@@ -77,14 +77,14 @@ class cl_image_2d : public cl_image<T> {
     void copyPixelsFrom(const image<T>& other) const {
         assert(other.width == image<T>::width && other.height == image<T>::height);
         cl::enqueueWriteImage(_payload->image, true, {0, 0, 0}, {(size_t)image<T>::width, (size_t)image<T>::height, 1},
-                              image<T>::pixel_size * image<T>::width, 0, other.pixels().data());
+                              image<T>::pixel_size * other.stride, 0, other.pixels().data());
     }
 
     void copyPixelsTo(image<T>* other) const {
         assert(other->width == image<T>::width && other->height == image<T>::height);
         cl::enqueueReadImage(_payload->image, CL_TRUE, {0, 0, 0},
                              {(size_t)image<T>::width, (size_t)image<T>::height, 1},
-                             image<T>::pixel_size * image<T>::width, 0, other->pixels().data());
+                             image<T>::pixel_size * other->stride, 0, other->pixels().data());
     }
 
     virtual image<T> mapImage() const {

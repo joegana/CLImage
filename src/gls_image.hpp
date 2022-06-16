@@ -40,13 +40,16 @@ struct point {
     point(int _x, int _y) : x(_x), y(_y) {}
 };
 
-struct rectangle {
-    int x;
-    int y;
+struct size {
     int width;
     int height;
 
-    rectangle(int _x, int _y, int _width, int _height) : x(_x), y(_y), width(_width), height(_height) {}
+    size(int _width, int _height) : width(_width), height(_height) {}
+};
+
+struct rectangle : public point, size {
+    rectangle(point _origin, size _dimensions) : point(_origin), size(_dimensions) {}
+    rectangle(int _x, int _y, int _width, int _height) : point(_x, _y), size(_width, _height) {}
 };
 
 template <typename T>
@@ -221,6 +224,7 @@ class basic_image {
     typedef std::unique_ptr<basic_image<T>> unique_ptr;
 
     basic_image(int _width, int _height) : width(_width), height(_height) {}
+    basic_image(size _dimensions) : width(_dimensions.width), height(_dimensions.height) {}
 };
 
 template <typename T>
@@ -243,6 +247,8 @@ class image : public basic_image<T> {
 
     image(int _width, int _height) : image(_width, _height, _width) {}
 
+    image(size _dimensions) : image(_dimensions.width, _dimensions.height) {}
+
     // Data is owned by caller, the image is only a wrapper around it
     image(int _width, int _height, int _stride, std::span<T> data)
         : basic_image<T>(_width, _height), stride(_stride), _data(data) {
@@ -255,9 +261,13 @@ class image : public basic_image<T> {
         assert(_x + _width <= _base->width && _y + _height <= _base->height);
     }
 
+    image(image *_base, rectangle _crop) : image(_base, _crop.x, _crop.y, _crop.width, _crop.height) {}
+
     image(const image& _base, int _x, int _y, int _width, int _height) : image<T>(_width, _height, _base.stride, std::span(_base._data.data() + _y * _base.stride + _x, _base.stride * _height)) {
         assert(_x + _width <= _base.width && _y + _height <= _base.height);
     }
+
+    image(const image& _base, rectangle _crop) : image(_base, _crop.x, _crop.y, _crop.width, _crop.height) {}
 
     // row access
     T* operator[](int row) { return &_data[stride * row]; }
