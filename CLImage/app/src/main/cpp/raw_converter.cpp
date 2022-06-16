@@ -11,7 +11,7 @@
 
 static const char* TAG = "RAW Converter";
 
-#define PRINT_EXECUTION_TIME true
+// #define PRINT_EXECUTION_TIME true
 
 void RawConverter::allocateTextures(gls::OpenCLContext* glsContext, int width, int height) {
     auto clContext = glsContext->clContext();
@@ -113,6 +113,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     interpolateRedBlue(_glsContext, *clScaledRawImage, *clGreenImage, clLinearRGBImageA.get(), demosaicParameters->bayerPattern,
                        sqrt((noiseModel->rawNlf[0] + noiseModel->rawNlf[2]) / 2), rotate_180);
 
+    // Recover clipped highlights
     blendHighlightsImage(_glsContext, *clLinearRGBImageA, /*clip=*/ 1.0, clLinearRGBImageA.get());
 
     // --- Image Denoising ---
@@ -129,14 +130,14 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     const auto& np = noiseModel->pyramidNlf[0];
     despeckleImage(_glsContext, *clLinearRGBImageA, { np[0], np[1], np[2] }, { np[3], np[4], np[5] }, clLinearRGBImageB.get());
 
-    // False Color Removal
-    // TODO: Make this an optional stage
-    std::cout << "falseColorsRemovalImage" << std::endl;
-    applyKernel(_glsContext, "falseColorsRemovalImage", *clLinearRGBImageB, clLinearRGBImageA.get());
+//    // False Color Removal
+//    // TODO: this is expensive, make it an optional stage
+//    std::cout << "falseColorsRemovalImage" << std::endl;
+//    applyKernel(_glsContext, "falseColorsRemovalImage", *clLinearRGBImageB, clLinearRGBImageA.get());
 
     auto clDenoisedImage = pyramidalDenoise->denoise(_glsContext, &(demosaicParameters->denoiseParameters),
-                                                     clLinearRGBImageA.get(),
-                                                     demosaicParameters->rgb_cam, gmb_position, false,
+                                                     clLinearRGBImageB.get(),
+                                                     demosaicParameters->rgb_cam, gmb_position, rotate_180,
                                                      &(noiseModel->pyramidNlf));
 
 //    if (high_noise_image) {
@@ -176,6 +177,9 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::fastDemosaicImage(const gls::im
 
     LOG_INFO(TAG) << "Begin Fast Demosaicing (GPU)..." << std::endl;
 
+#ifdef PRINT_EXECUTION_TIME
+    auto t_start = std::chrono::high_resolution_clock::now();
+#endif
     // Copy input data to the OpenCL input buffer
     clRawImage->copyPixelsFrom(rawImage);
 
@@ -186,9 +190,21 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::fastDemosaicImage(const gls::im
 
     fasteDebayer(_glsContext, *clScaledRawImage, clFastLinearRGBImage.get(), demosaicParameters.bayerPattern);
 
+    // Recover clipped highlights
+    blendHighlightsImage(_glsContext, *clFastLinearRGBImage, /*clip=*/ 1.0, clFastLinearRGBImage.get());
+
     // --- Image Post Processing ---
 
     convertTosRGB(_glsContext, *clFastLinearRGBImage, *ltmMaskImage, clsFastRGBImage.get(), demosaicParameters);
+
+#ifdef PRINT_EXECUTION_TIME
+    cl::CommandQueue queue = cl::CommandQueue::getDefault();
+    queue.finish();
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double elapsed_time_ms = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+
+    LOG_INFO(TAG) << "OpenCL Pipeline Execution Time: " << (int) elapsed_time_ms << "ms for image of size: " << rawImage.width << " x " << rawImage.height << std::endl;
+#endif
 
     return clsFastRGBImage.get();
 }
