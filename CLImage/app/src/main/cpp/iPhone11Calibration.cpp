@@ -140,11 +140,6 @@ std::pair<gls::Vector<4>, gls::Matrix<levels, 6>> nlfFromIsoiPhone(const std::ar
     }
 }
 
-float smoothstep(float edge0, float edge1, float x) {
-  float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
-  return t * t * (3.0f - 2.0f * t);
-}
-
 std::pair<float, std::array<DenoiseParameters, 5>> iPhone11DenoiseParameters(int iso, float varianceBoost) {
     const auto nlf_params = nlfFromIsoiPhone<5>(iPhone11, iso);
 
