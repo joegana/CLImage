@@ -22,72 +22,101 @@
 #include <cmath>
 #include <filesystem>
 
-static const std::array<NoiseModel, 6> NLF_IMX571 = {{
+static const std::array<NoiseModel, 8> NLF_IMX571 = {{
+    // ISO 100
     {
-        { 5.8995e-05, 5.4218e-05, 5.1745e-05, 5.1355e-05 },
+        { 1.8e-04, 1.0e-04, 1.6e-04, 9.0e-05 },
         {
-            4.6078e-05, 3.3181e-06, 3.0636e-06, 0, 0, 0,
-            1.3286e-05, 2.5259e-06, 2.4235e-06, 0, 0, 0,
-            5.0580e-06, 2.0399e-06, 2.0061e-06, 0, 0, 0,
-            2.2516e-06, 1.8550e-06, 1.8422e-06, 0, 0, 0,
-            2.4016e-06, 1.7470e-06, 1.7424e-06, 0, 0, 0,
+            4.5e-06, 6.8e-07, 7.0e-07, 4.5e-05, 4.1e-05, 3.6e-05,
+            7.6e-06, 1.1e-06, 1.5e-06, 2.6e-05, 2.1e-05, 2.4e-05,
+            1.7e-05, 2.1e-06, 2.9e-06, 3.2e-05, 1.0e-05, 2.3e-05,
+            4.1e-05, 3.8e-06, 5.1e-06, 9.3e-05, 1.2e-05, 4.3e-05,
+            7.0e-05, 5.0e-06, 4.7e-06, 4.0e-04, 4.5e-05, 1.3e-04,
         },
     },
+    // ISO 200
     {
-        { 1.0815e-04, 9.9500e-05, 9.7302e-05, 1.0157e-04 },
+        { 3.2e-04, 1.7e-04, 2.8e-04, 1.4e-04 },
         {
-            8.7183e-05, 8.2809e-06, 7.6248e-06, 0, 0, 0,
-            2.5632e-05, 6.0580e-06, 5.8181e-06, 0, 0, 0,
-            9.9401e-06, 4.6615e-06, 4.6154e-06, 0, 0, 0,
-            4.5783e-06, 4.1732e-06, 4.1538e-06, 0, 0, 0,
-            3.9608e-06, 3.9518e-06, 3.9546e-06, 0, 0, 0,
+            4.5e-06, 8.5e-07, 7.7e-07, 7.0e-05, 7.7e-05, 6.6e-05,
+            7.5e-06, 1.1e-06, 1.5e-06, 3.3e-05, 3.6e-05, 3.7e-05,
+            1.7e-05, 2.1e-06, 2.9e-06, 3.5e-05, 1.5e-05, 2.7e-05,
+            4.1e-05, 3.8e-06, 5.1e-06, 9.4e-05, 1.4e-05, 4.4e-05,
+            7.0e-05, 5.0e-06, 4.7e-06, 4.0e-04, 4.5e-05, 1.3e-04,
         },
     },
+    // ISO 400
     {
-        { 2.0683e-04, 1.9365e-04, 1.9477e-04, 1.9835e-04 },
+        { 6.0e-04, 3.1e-04, 5.3e-04, 2.5e-04 },
         {
-            1.6720e-04, 8.2837e-06, 7.2979e-06, 0, 0, 0,
-            4.6571e-05, 5.2380e-06, 4.8545e-06, 0, 0, 0,
-            1.5780e-05, 3.2460e-06, 3.1590e-06, 0, 0, 0,
-            6.0399e-06, 2.5417e-06, 2.5231e-06, 0, 0, 0,
-            3.9350e-06, 2.2943e-06, 2.2953e-06, 0, 0, 0,
+            4.5e-06, 1.1e-06, 8.7e-07, 1.2e-04, 1.5e-04, 1.3e-04,
+            7.5e-06, 1.3e-06, 1.5e-06, 4.9e-05, 6.7e-05, 6.3e-05,
+            1.7e-05, 2.2e-06, 2.9e-06, 3.9e-05, 2.5e-05, 3.5e-05,
+            4.1e-05, 3.8e-06, 5.0e-06, 9.6e-05, 1.6e-05, 4.6e-05,
+            7.0e-05, 4.9e-06, 4.6e-06, 4.0e-04, 4.6e-05, 1.3e-04,
         },
     },
+    // ISO 800
     {
-        { 4.2513e-04, 3.7694e-04, 4.0732e-04, 3.8399e-04 },
+        { 1.1e-03, 6.1e-04, 1.0e-03, 4.8e-04 },
         {
-            3.1399e-04, 1.4670e-05, 1.3769e-05, 0, 0, 0,
-            7.4048e-05, 8.6166e-06, 8.4927e-06, 0, 0, 0,
-            2.1717e-05, 4.8974e-06, 4.9674e-06, 0, 0, 0,
-            5.9704e-06, 3.6236e-06, 3.6382e-06, 0, 0, 0,
-            2.4477e-06, 3.1328e-06, 3.1489e-06, 0, 0, 0,
+            5.0e-06, 2.1e-06, 1.6e-06, 2.2e-04, 2.8e-04, 2.5e-04,
+            8.3e-06, 1.8e-06, 2.0e-06, 7.8e-05, 1.2e-04, 1.2e-04,
+            1.9e-05, 2.7e-06, 3.5e-06, 4.2e-05, 4.3e-05, 5.4e-05,
+            4.4e-05, 4.4e-06, 5.6e-06, 1.1e-04, 2.2e-05, 5.7e-05,
+            7.8e-05, 5.3e-06, 5.2e-06, 4.2e-04, 5.1e-05, 1.4e-04,
         },
     },
+    // ISO 1600
     {
-        { 8.7268e-04, 7.4568e-04, 8.0404e-04, 7.9171e-04 },
+        { 2.3e-03, 1.2e-03, 2.0e-03, 9.2e-04 },
         {
-            6.3230e-04, 4.4344e-05, 4.1359e-05, 0, 0, 0,
-            1.4667e-04, 2.4977e-05, 2.4449e-05, 0, 0, 0,
-            3.9296e-05, 1.2878e-05, 1.3054e-05, 0, 0, 0,
-            1.1223e-05, 8.5536e-06, 8.6911e-06, 0, 0, 0,
-            5.0937e-06, 7.2092e-06, 7.2716e-06, 0, 0, 0,
+            5.0e-06, 3.0e-06, 2.5e-06, 4.4e-04, 5.5e-04, 4.9e-04,
+            8.5e-06, 2.5e-06, 2.6e-06, 1.4e-04, 2.4e-04, 2.2e-04,
+            1.9e-05, 2.9e-06, 3.7e-06, 5.6e-05, 8.0e-05, 8.6e-05,
+            4.4e-05, 4.5e-06, 5.6e-06, 1.1e-04, 3.2e-05, 6.5e-05,
+            8.0e-05, 5.5e-06, 5.4e-06, 4.2e-04, 5.1e-05, 1.4e-04,
         },
     },
+    // ISO 3200
     {
-        { 2.5013e-03, 1.7729e-03, 2.2981e-03, 1.7412e-03 },
+        { 4.6e-03, 2.3e-03, 3.9e-03, 1.8e-03 },
         {
-            8.2186e-04, 6.6875e-05, 6.9377e-05, 0, 0, 0,
-            2.2212e-04, 3.9264e-05, 4.2434e-05, 0, 0, 0,
-            7.0234e-05, 2.1307e-05, 2.3023e-05, 0, 0, 0,
-            2.1599e-05, 1.4505e-05, 1.4757e-05, 0, 0, 0,
-            7.8263e-06, 1.2044e-05, 1.1925e-05, 0, 0, 0,
+            4.9e-06, 6.7e-06, 3.8e-06, 9.0e-04, 1.1e-03, 9.9e-04,
+            8.4e-06, 3.8e-06, 4.0e-06, 2.8e-04, 4.9e-04, 4.4e-04,
+            2.0e-05, 3.6e-06, 4.2e-06, 9.0e-05, 1.5e-04, 1.5e-04,
+            4.4e-05, 4.8e-06, 5.8e-06, 1.2e-04, 5.2e-05, 8.2e-05,
+            8.1e-05, 5.7e-06, 5.7e-06, 4.2e-04, 5.6e-05, 1.4e-04,
+        },
+    },
+    // ISO 6400
+    {
+        { 9.5e-03, 4.7e-03, 8.3e-03, 3.6e-03 },
+        {
+            2.1e-05, 3.8e-05, 2.1e-05, 1.9e-03, 2.3e-03, 2.1e-03,
+            1.2e-05, 1.7e-05, 1.2e-05, 6.1e-04, 1.0e-03, 9.3e-04,
+            1.9e-05, 7.5e-06, 6.2e-06, 1.9e-04, 3.3e-04, 3.1e-04,
+            4.1e-05, 5.2e-06, 5.1e-06, 1.4e-04, 9.8e-05, 1.3e-04,
+            7.3e-05, 4.4e-06, 2.8e-06, 4.2e-04, 6.9e-05, 1.7e-04,
+        },
+    },
+    // ISO 10000
+    {
+        { 1.7e-02, 7.5e-03, 1.5e-02, 5.7e-03 },
+        {
+            3.9e-05, 4.0e-05, 0.0e+00, 2.8e-03, 4.8e-03, 4.7e-03,
+            1.9e-05, 2.1e-05, 0.0e+00, 8.7e-04, 2.2e-03, 2.1e-03,
+            2.3e-05, 1.2e-05, 5.6e-06, 2.5e-04, 6.9e-04, 6.6e-04,
+            4.3e-05, 7.3e-06, 6.9e-06, 1.9e-04, 2.0e-04, 2.5e-04,
+            7.5e-05, 6.7e-06, 8.5e-06, 5.2e-04, 1.1e-04, 2.5e-04,
         },
     },
 }};
 
+
 template <int levels>
-std::pair<gls::Vector<4>, gls::Matrix<levels, 6>> nlfFromIso(const std::array<NoiseModel, 6>& NLFData, int iso) {
-    iso = std::clamp(iso, 100, 3200);
+static std::pair<gls::Vector<4>, gls::Matrix<levels, 6>> nlfFromIso(const std::array<NoiseModel, 8>& NLFData, int iso) {
+    iso = std::clamp(iso, 100, 6400);
     if (iso >= 100 && iso < 200) {
         float a = (iso - 100) / 100;
         return std::pair(lerpRawNLF(NLFData[0].rawNlf, NLFData[1].rawNlf, a), lerpNLF<levels>(NLFData[0].pyramidNlf, NLFData[1].pyramidNlf, a));
@@ -100,9 +129,15 @@ std::pair<gls::Vector<4>, gls::Matrix<levels, 6>> nlfFromIso(const std::array<No
     } else if (iso >= 800 && iso < 1600) {
         float a = (iso - 800) / 800;
         return std::pair(lerpRawNLF(NLFData[3].rawNlf, NLFData[4].rawNlf, a), lerpNLF<levels>(NLFData[3].pyramidNlf, NLFData[4].pyramidNlf, a));
-    } else /* if (iso >= 1600 && iso <= 3200) */ {
+    } else if (iso >= 1600 && iso < 3200) {
         float a = (iso - 1600) / 1600;
         return std::pair(lerpRawNLF(NLFData[4].rawNlf, NLFData[5].rawNlf, a), lerpNLF<levels>(NLFData[4].pyramidNlf, NLFData[5].pyramidNlf, a));
+    } else if (iso >= 3200 && iso < 6400) {
+        float a = (iso - 3200) / 3200;
+        return std::pair(lerpRawNLF(NLFData[5].rawNlf, NLFData[6].rawNlf, a), lerpNLF<levels>(NLFData[5].pyramidNlf, NLFData[6].pyramidNlf, a));
+    } else /* if (iso >= 6400 && iso < 10000) */ {
+        float a = (iso - 6400) / 3600;
+        return std::pair(lerpRawNLF(NLFData[6].rawNlf, NLFData[7].rawNlf, a), lerpNLF<levels>(NLFData[6].pyramidNlf, NLFData[7].pyramidNlf, a));
     }
 }
 
@@ -119,27 +154,27 @@ std::pair<float, std::array<DenoiseParameters, 5>> IMX571DenoiseParameters(int i
 
     std::array<DenoiseParameters, 5> denoiseParameters = {{
         {
-            .luma = 0.125f * std::lerp(1.0f, 2.0f, nlf_alpha),
+            .luma = 0.125f, // * std::lerp(1.0f, 2.0f, nlf_alpha),
             .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
             .sharpening = std::lerp(1.5f, 1.0f, nlf_alpha)
         },
         {
-            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha),
+            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
             .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
             .sharpening = 1.1 // std::lerp(1.0f, 0.8f, nlf_alpha),
         },
         {
-            .luma = 0.5f * std::lerp(1.0f, 2.0f, nlf_alpha),
+            .luma = 0.5f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
             .chroma = std::lerp(1.0f, 4.0f, nlf_alpha),
             .sharpening = 1
         },
         {
-            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha),
+            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
             .chroma = std::lerp(1.0f, 4.0f, nlf_alpha),
             .sharpening = 1
         },
         {
-            .luma = 0.125f * std::lerp(1.0f, 2.0f, nlf_alpha),
+            .luma = 0.125f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
             .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
             .sharpening = 1
         }
@@ -148,16 +183,45 @@ std::pair<float, std::array<DenoiseParameters, 5>> IMX571DenoiseParameters(int i
     return { nlf_alpha, denoiseParameters };
 }
 
+void rotate180AndFlipHorizontal(gls::image<gls::luma_pixel_16>* inputImage) {
+    for (int y = 0; y < inputImage->height; y++) {
+        for (int x = 0; x < inputImage->width / 2; x++) {
+            const auto t = (*inputImage)[y][x];
+            (*inputImage)[y][x] = (*inputImage)[y][inputImage->width - 1 - x];
+            (*inputImage)[y][inputImage->width - 1 - x] = t;
+        }
+    }
+
+    for (int x = 0; x < inputImage->width; x++) {
+        for (int y = 0; y < inputImage->height / 2; y++) {
+            const auto t = (*inputImage)[y][x];
+            (*inputImage)[y][x] = (*inputImage)[inputImage->height - 1 - y][x];
+            (*inputImage)[inputImage->height - 1 - y][x] = t;
+        }
+    }
+
+    for (int y = 0; y < inputImage->height; y++) {
+        for (int x = 0; x < inputImage->width / 2; x++) {
+            const auto t = (*inputImage)[y][x];
+            (*inputImage)[y][x] = (*inputImage)[y][inputImage->width - 1 - x];
+            (*inputImage)[y][inputImage->width - 1 - x] = t;
+        }
+    }
+}
+
 gls::image<gls::rgb_pixel>::unique_ptr calibrateIMX571DNG(RawConverter* rawConverter, const std::filesystem::path& input_path,
                                                           DemosaicParameters* demosaicParameters, int iso,
-                                                          const gls::rectangle& rotated_gmb_position, bool rotate_180) {
+                                                          const gls::rectangle& gmb_position, bool rotate_180) {
     gls::tiff_metadata dng_metadata, exif_metadata;
     dng_metadata.insert({ TIFFTAG_MAKE, "Glass Imaging" });
     dng_metadata.insert({ TIFFTAG_UNIQUECAMERAMODEL, "Glass 2" });
 
+    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.2594, -0.5333, -0.1138, -0.1404, 0.9717, 0.1688, 0.0342, 0.0969, 0.4330 } });
+    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 1.8930, 1.0000, 1 / 1.7007 } });
+
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
 
-    const gls::rectangle gmb_position = rotate180(rotated_gmb_position, *inputImage);
+    // rotate180AndFlipHorizontal(inputImage.get());
 
     unpackDNGMetadata(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
 
@@ -171,7 +235,13 @@ gls::image<gls::rgb_pixel>::unique_ptr calibrateIMX571DNG(RawConverter* rawConve
     demosaicParameters->noiseLevel = denoiseParameters.first;
     demosaicParameters->denoiseParameters = denoiseParameters.second;
 
-    return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, demosaicParameters, &rotated_gmb_position, rotate_180));
+    auto result = RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, demosaicParameters, &gmb_position, rotate_180));
+
+//    dng_metadata[TIFFTAG_CFAPATTERN] = std::vector<uint8_t>{ 1, 0, 2, 1 };
+//    exif_metadata[EXIFTAG_ISOSPEEDRATINGS] = std::vector<uint16_t>{ (uint16_t) iso };
+//    inputImage->write_dng_file((input_path.parent_path() / input_path.stem()).string() + "_ok.dng", gls::JPEG, &dng_metadata, &exif_metadata);
+
+    return result;
 }
 
 void calibrateIMX571(RawConverter* rawConverter, const std::filesystem::path& input_dir) {
@@ -183,10 +253,21 @@ void calibrateIMX571(RawConverter* rawConverter, const std::filesystem::path& in
     };
 
     std::array<CalibrationEntry, 1> calibration_files = {{
-        { 100, "2022-06-06-17-32-58-804.dng", { 2166, 1427, 1877, 1243 }, false },
+        { 100,   "2022-06-15-11-03-22-196.dng",   {2246, 803, 2734, 1762}, false },
     }};
 
-    std::array<NoiseModel, 6> noiseModel;
+//    std::array<CalibrationEntry, 8> calibration_files = {{
+//        { 100,   "imx571-00-ms_40-iso_100_ok.dng",   {2366, 525, 2709, 1796}, false },
+//        { 200,   "imx571-01-ms_20-iso_200_ok.dng",   {2366, 525, 2709, 1796}, false },
+//        { 400,   "imx571-02-ms_10-iso_400_ok.dng",   {2366, 525, 2709, 1796}, false },
+//        { 800,   "imx571-03-ms_40-iso_800_ok.dng",   {2366, 525, 2709, 1796}, false },
+//        { 1600,  "imx571-04-ms_20-iso_1600_ok.dng",  {2366, 525, 2709, 1796}, false },
+//        { 3200,  "imx571-05-ms_10-iso_3200_ok.dng",  {2366, 525, 2709, 1796}, false },
+//        { 6400,  "imx571-06-ms_40-iso_6400_ok.dng",  {2366, 525, 2709, 1796}, false },
+//        { 10000, "imx571-07-ms_30-iso_10000_ok.dng", {2366, 525, 2709, 1796}, false },
+//    }};
+
+    std::array<NoiseModel, 8> noiseModel;
 
     for (int i = 0; i < calibration_files.size(); i++) {
         auto& entry = calibration_files[i];
@@ -210,8 +291,8 @@ void calibrateIMX571(RawConverter* rawConverter, const std::filesystem::path& in
     for (int i = 0; i < calibration_files.size(); i++) {
         std::cout << "// ISO " << calibration_files[i].iso << std::endl;
         std::cout << "{" << std::endl;
-        std::cout << "{ " << noiseModel[i].rawNlf << " }," << std::endl;
-        std::cout << "{\n" << noiseModel[i].pyramidNlf << "\n}," << std::endl;
+        std::cout << "{ " << std::setprecision(4) << noiseModel[i].rawNlf << " }," << std::endl;
+        std::cout << "{\n" << std::setprecision(4) << noiseModel[i].pyramidNlf << "\n}," << std::endl;
         std::cout << "}," << std::endl;
     }
 }
@@ -222,19 +303,40 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX571DNG(RawConverter* rawConver
             .contrast = 1.05,
             .saturation = 1.0,
             .toneCurveSlope = 3.5,
+            .exposureBias = 0,
+            .blacks = 0.1,
+            .localToneMapping = true
+        },
+        .ltmParameters = {
+            .guidedFilterEps = 0.01,
+            // .shadows = 1.15, // LTM Low
+            .shadows = 1.25, // LTM High
+            .highlights = 1,
+            .detail = 1.1,
         }
     };
 
     gls::tiff_metadata dng_metadata, exif_metadata;
-    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.3707, -0.5861, -0.1600, -0.1797, 1.0599, 0.1198, 0.0074, 0.1327, 0.4114 } });
-    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 1.8796, 1.0000, 1 / 1.7351 } });
+    dng_metadata.insert({ TIFFTAG_COLORMATRIX1, std::vector<float>{ 1.2594, -0.5333, -0.1138, -0.1404, 0.9717, 0.1688, 0.0342, 0.0969, 0.4330 } });
+    dng_metadata.insert({ TIFFTAG_ASSHOTNEUTRAL, std::vector<float>{ 1 / 1.8930, 1.0000, 1 / 1.7007 } });
 
     dng_metadata.insert({ TIFFTAG_MAKE, "Glass Imaging" });
     dng_metadata.insert({ TIFFTAG_UNIQUECAMERAMODEL, "Glass 2" });
 
-    const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
+    auto fullInputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
 
-    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, /*gmb_position=*/ nullptr, /*rotate_180=*/ false);
+    // A crop size with dimensions multiples of 128 and ratio of exactly 3:2, for a total resolution of 16MP
+    const gls::size imageSize = { 4992, 3328 };
+    const gls::rectangle crop({(fullInputImage->width - imageSize.width) / 2, (fullInputImage->height - imageSize.height) / 2}, imageSize);
+
+    auto inputImage = gls::image<gls::luma_pixel_16>(*fullInputImage,
+                                                     (fullInputImage->width - imageSize.width) / 2,
+                                                     (fullInputImage->height - imageSize.height) / 2,
+                                                     imageSize.width, imageSize.height);
+
+    float highlights = 0;
+    unpackDNGMetadata(inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ true, /*gmb_position=*/ nullptr, /*rotate_180=*/ false, &highlights);
+    std::cout << "highlights: " << highlights << std::endl;
 
     float iso = 100;
     const auto exifIsoSpeedRatings = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
@@ -249,6 +351,13 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX571DNG(RawConverter* rawConver
     demosaicParameters.noiseLevel = denoiseParameters.first;
     demosaicParameters.denoiseParameters = denoiseParameters.second;
 
-    return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, &demosaicParameters, nullptr, /*rotate_180=*/ false));
-    // return RawConverter::convertToRGBImage(*rawConverter->fastDemosaicImage(*inputImage, demosaicParameters));
+    float exposureCompensation = 0.5 * smoothstep(0.01, 0.1, highlights);
+    if (exposureCompensation > 0) {
+        demosaicParameters.rgbConversionParameters.exposureBias = -exposureCompensation;
+        demosaicParameters.ltmParameters.shadows += 0.3 * exposureCompensation;
+        std::cout << "exposureBias: " << -exposureCompensation << std::endl;
+    }
+
+    return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(inputImage, &demosaicParameters, nullptr, /*rotate_180=*/ false));
+    // return RawConverter::convertToRGBImage(*rawConverter->fastDemosaicImage(inputImage, demosaicParameters));
 }

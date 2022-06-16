@@ -442,7 +442,7 @@ void gaussianBlurImage(gls::OpenCLContext* glsContext,
                 weights[i] = exp(-((float)(x * x + y * y) / (2 * radius * radius)));
             }
         }
-        std::cout << "Gaussian Kernel weights: " << std::endl;
+        std::cout << "Gaussian Kernel weights (" << weights.size() << "): " << std::endl;
         for (const auto& w : weights) {
             std::cout << w << std::endl;
         }
@@ -452,7 +452,7 @@ void gaussianBlurImage(gls::OpenCLContext* glsContext,
         std::vector<std::tuple<float, float, float>> weightsOut(weightsCount);
         KernelOptimizeBilinear2d(kernelSize, weights, &weightsOut);
 
-        std::cout << "Bilinear Gaussian Kernel weights and offsets: " << std::endl;
+        std::cout << "Bilinear Gaussian Kernel weights and offsets (" << weightsOut.size() << "): " << std::endl;
         for (const auto& [w, x, y] : weightsOut) {
             std::cout << w << " @ (" << x << " : " << y << "), " << std::endl;
         }

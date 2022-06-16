@@ -39,6 +39,8 @@ typedef struct RGBConversionParameters {
     float contrast = 1.05;
     float saturation = 1.0;
     float toneCurveSlope = 3.5;
+    float exposureBias = 0;
+    float blacks = 0;
     int localToneMapping = 0;
 } RGBConversionParameters;
 
@@ -129,6 +131,11 @@ gls::Matrix<levels, 6> lerpNLF(const gls::Matrix<levels, 6>& NLFData0, const gls
     return result;
 }
 
+inline static float smoothstep(float edge0, float edge1, float x) {
+  float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+  return t * t * (3.0f - 2.0f * t);
+}
+
 void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);
 
 void interpolateGreen(const gls::image<gls::luma_pixel_16>& rawImage,
@@ -155,7 +162,8 @@ void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3
 float unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
                         gls::tiff_metadata* dng_metadata,
                         DemosaicParameters* demosaicParameters,
-                        bool auto_white_balance, const gls::rectangle* gmb_position, bool rotate_180);
+                        bool auto_white_balance, const gls::rectangle* gmb_position,
+                        bool rotate_180, float* highlights = nullptr);
 
 gls::Matrix<3, 3> cam_ycbcr(const gls::Matrix<3, 3>& rgb_cam);
 
@@ -212,7 +220,8 @@ gls::Vector<4> estimateRawParameters(const gls::image<gls::luma_pixel_16>& rawIm
 void colorcheck(const std::array<RawPatchStats, 24>& rawStats);
 
 gls::Vector<3> autoWhiteBalance(const gls::image<gls::luma_pixel_16>& rawImage, const gls::Matrix<3, 3>& rgb_ycbcr,
-                                const gls::Vector<4>& scale_mul, float white, float black, BayerPattern bayerPattern);
+                                const gls::Vector<4>& scale_mul, float white, float black, BayerPattern bayerPattern,
+                                float* highlights = nullptr);
 
 void KernelOptimizeBilinear2d(int width, const std::vector<float>& weightsIn,
                               std::vector<std::tuple</* w */ float, /* x */ float, /* y */ float>>* weightsOut);
