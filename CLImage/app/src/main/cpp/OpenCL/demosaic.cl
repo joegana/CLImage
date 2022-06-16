@@ -45,8 +45,8 @@ constant const int2 bayerOffsets[4][4] = {
       type_of_x _edge0 = (edge0); \
       type_of_x _edge1 = (edge1); \
       type_of_x _x = (x); \
-      type_of_x t = clamp((_x - _edge0) / (_edge1 - _edge0), 0.0f, 1.0f); \
-      t * t * (3.0f - 2.0f * t); })
+      type_of_x t = clamp((_x - _edge0) / (_edge1 - _edge0), (type_of_x) 0, (type_of_x) 1); \
+      t * t * (3 - 2 * t); })
 
 #endif
 
@@ -259,16 +259,18 @@ kernel void fastDebayer(read_only image2d_t rawImage, write_only image2d_t rgbIm
     write_imagef(rgbImage, imageCoordinates, (float4)(red, (green + green2) / 2, blue, 0.0));
 }
 
+#define M_SQRT3_F 1.7320508f
+
 kernel void blendHighlightsImage(read_only image2d_t inputImage, float clip, write_only image2d_t outputImage) {
     constant float3 trans[3] = {
-        {1, 1, 1},
-        {1.7320508, -1.7320508, 0},
-        {-1, -1, 2},
+        {         1,          1, 1 },
+        { M_SQRT3_F, -M_SQRT3_F, 0 },
+        {        -1,         -1, 2 },
     };
     constant float3 itrans[3] = {
-        {1, 0.8660254, -0.5},
-        {1, -0.8660254, -0.5},
-        {1, 0, 1},
+        { 1,  M_SQRT3_F / 2, -0.5 },
+        { 1, -M_SQRT3_F / 2, -0.5 },
+        { 1,              0,  1   },
     };
 
     const int2 imageCoordinates = (int2)(get_global_id(0), get_global_id(1));
@@ -280,14 +282,17 @@ kernel void blendHighlightsImage(read_only image2d_t inputImage, float clip, wri
         float3 lab[2];
         float sum[2];
         for (int i = 0; i < 2; i++) {
-            lab[i] = (float3)(dot(trans[0], cam[i]), dot(trans[1], cam[i]), dot(trans[2], cam[i]));
+            lab[i] = (float3)(dot(trans[0], cam[i]),
+                              dot(trans[1], cam[i]),
+                              dot(trans[2], cam[i]));
             sum[i] = dot(lab[i].yz, lab[i].yz);
         }
         float chratio = sum[0] > 0 ? sqrt(sum[1] / sum[0]) : 1;
         lab[0].yz *= chratio;
 
-        pixel =
-            (float3)(dot(itrans[0], lab[0]), dot(itrans[1], lab[0]), dot(itrans[2], lab[0])) / 3;
+        pixel = (float3)(dot(itrans[0], lab[0]),
+                         dot(itrans[1], lab[0]),
+                         dot(itrans[2], lab[0])) / 3;
     }
 
     write_imagef(outputImage, imageCoordinates, (float4)(pixel, 0.0));
@@ -926,11 +931,11 @@ kernel void guidedFilterAB(read_only image2d_t pImage, read_only image2d_t I_Ima
 
     for (int y = -radius; y <= radius; y++) {
         for (int x = -radius; x <= radius; x++) {
-            float I = read_imagef(I_Image, imageCoordinates + (float2)(x, y)).x;
+            float I = read_imagef(I_Image, imageCoordinates + (int2)(x, y)).x;
             mean_I += I;
             mean_II += I * I;
 
-            float p = read_imagef(pImage, imageCoordinates + (float2)(x, y)).x;
+            float p = read_imagef(pImage, imageCoordinates + (int2)(x, y)).x;
             mean_p += p;
             mean_Ip = I * p;
         }
@@ -958,43 +963,58 @@ typedef struct LTMParameters {
     float detail;
 } LTMParameters;
 
+// Fast 5x5 box filtering with linear subsampling
+typedef struct ConvolutionParameters {
+    float weight;
+    float2 offset;
+} ConvolutionParameters;
+
+constant ConvolutionParameters boxFilter5x5[9] = {
+    { 0.1600, { -1.5000, -1.5000 } },
+    { 0.1600, {  0.5000, -1.5000 } },
+    { 0.0800, {  2.0000, -1.5000 } },
+    { 0.1600, { -1.5000,  0.5000 } },
+    { 0.1600, {  0.5000,  0.5000 } },
+    { 0.0800, {  2.0000,  0.5000 } },
+    { 0.0800, { -1.5000,  2.0000 } },
+    { 0.0800, {  0.5000,  2.0000 } },
+    { 0.0400, {  2.0000,  2.0000 } },
+};
+
 float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb, image2d_t inputImage,
                             int2 imageCoordinates, sampler_t linear_sampler, float2 inputNorm) {
     const float2 pos = convert_float2(imageCoordinates) * inputNorm;
-
-    const int radius = 5;
-    const int count = (2 * radius + 1) * (2 * radius + 1);
 
     // One channel Fast Guided Filter to estimate the image's illuminance
 
     float sum = 0;
     float sumSq = 0;
-    for (int y = -radius; y <= radius; y++) {
-        for (int x = -radius; x <= radius; x++) {
-            float sample = read_imagef(inputImage, linear_sampler, pos + (float2)(x + 0.5f, y + 0.5f) * inputNorm).x;
-            sum += sample;
-            sumSq += sample * sample;
-        }
+    for (int i = 0; i < 9; i++) {
+        constant ConvolutionParameters* cp = &boxFilter5x5[i];
+        float sample = cp->weight * read_imagef(inputImage, linear_sampler, pos + (cp->offset + 0.5f) * inputNorm).x;
+        sum += sample;
+        sumSq += sample * sample;
     }
-    float mean = sum / count;
-    float var = (sumSq - (sum * sum) / count) / count;
+    float mean = sum;
+    float var = sumSq - sum * sum;
 
-    const float3 input = read_imagef(inputImage, linear_sampler, pos + (float2)(0.5f, 0.5f) * inputNorm).xyz;
+    // TODO: This is technically wrong, we should use the full resolution guide image to generate the result
+    const float3 input = read_imagef(inputImage, linear_sampler, pos + 0.5f * inputNorm).xyz;
     const float luma = input.x;
 
     const float eps = ltmParameters->guidedFilterEps;
     float filtered_pixel = 0;
     float kernel_norm = 0;
-    for (int y = -radius; y <= radius; y++) {
-        for (int x = -radius; x <= radius; x++) {
-            float sample = read_imagef(inputImage, linear_sampler, pos + (float2)(x + 0.5f, y + 0.5f) * inputNorm).x;
+    for (int i = 0; i < 9; i++) {
+        constant ConvolutionParameters* cp = &boxFilter5x5[i];
+        float sample = read_imagef(inputImage, linear_sampler, pos + (cp->offset + 0.5f) * inputNorm).x;
+        float sampleWeight = cp->weight * (1 + (sample - mean) * (luma - mean) / (var + eps));
 
-            float sampleWeight = 1 + (sample - mean) * (luma - mean) / (var + eps);
-
-            filtered_pixel += sampleWeight * sample;
-            kernel_norm += sampleWeight;
-        }
+        filtered_pixel += sampleWeight * sample;
+        kernel_norm += sampleWeight;
     }
+
+    // The filtered image is an estimate of the illuminance
     float illuminance = filtered_pixel / kernel_norm;
     float reflectance = luma / illuminance;
 
@@ -1004,7 +1024,7 @@ float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb,
                            dot(ycbcr_srgb->m[2], input));
 
     // LTM curve computed in Log space
-    const float highlightsClipping = min(sqrt(2 * length(rgb)), 1.0);
+    const float highlightsClipping = min(length(sqrt(2 * rgb)), 1.0);
     const float tonalCompression = mix(ltmParameters->shadows, ltmParameters->highlights, highlightsClipping);
     return pow(illuminance, 1.0 / tonalCompression) * pow(reflectance, ltmParameters->detail) / luma;
 }
@@ -1299,33 +1319,50 @@ typedef struct RGBConversionParameters {
     float contrast;
     float saturation;
     float toneCurveSlope;
+    float exposureBias;
+    float blacks;
     int localToneMapping;
 } RGBConversionParameters;
 
 kernel void convertTosRGB(read_only image2d_t linearImage, read_only image2d_t ltmMaskImage, write_only image2d_t rgbImage,
-                          Matrix3x3 transform, RGBConversionParameters rgbConversionParameters) {
+                          Matrix3x3 transform, RGBConversionParameters parameters) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
     float3 pixel_value = read_imagef(linearImage, imageCoordinates).xyz;
 
-    // pixel_value = saturationBoost(pixel_value, rgbConversionParameters.saturation);
-    // pixel_value = desaturateBlacks(pixel_value);
-    pixel_value = contrastBoost(pixel_value, rgbConversionParameters.contrast);
+    // Exposure Bias
+    pixel_value *= parameters.exposureBias != 0 ? powr(2.0, parameters.exposureBias) : 1;
 
+    // Saturation
+    pixel_value = parameters.saturation != 1.0 ? saturationBoost(pixel_value, parameters.saturation) : pixel_value;
+
+    // Contrast
+    pixel_value = parameters.contrast != 1.0 ? contrastBoost(pixel_value, parameters.contrast) : pixel_value;
+
+    // Conversion to target color space
     float3 rgb = (float3) (dot(transform.m[0], pixel_value),
                            dot(transform.m[1], pixel_value),
                            dot(transform.m[2], pixel_value));
 
-    rgb = clamp(toneCurve(rgb, rgbConversionParameters.toneCurveSlope), 0.0, 1.0);
+    // Tone Curve
+    rgb = clamp(toneCurve(rgb, parameters.toneCurveSlope), 0.0, 1.0);
 
-    float ltmBoost = rgbConversionParameters.localToneMapping ? read_imagef(ltmMaskImage, imageCoordinates).x : 1;
+    // Local Tone Mapping
+    if (parameters.localToneMapping) {
+        float ltmBoost = read_imagef(ltmMaskImage, imageCoordinates).x;
 
-    if (ltmBoost > 1) {
-        // Modified Naik and Murthy’s method for preserving hue/saturation under luminance changes
-        const float luma = 0.2126 * rgb.x + 0.7152 * rgb.y + 0.0722 * rgb.z; // BT.709-2 (sRGB) luma primaries
-        rgb = mix(rgb * ltmBoost, luma < 1 ? 1 - (1.0 - rgb) * (1 - ltmBoost * luma) / (1 - luma) : rgb, pow(luma, 0.5));
-    } else if (ltmBoost < 1) {
-        rgb *= ltmBoost;
+        if (ltmBoost > 1) {
+            // Modified Naik and Murthy’s method for preserving hue/saturation under luminance changes
+            const float luma = 0.2126 * rgb.x + 0.7152 * rgb.y + 0.0722 * rgb.z; // BT.709-2 (sRGB) luma primaries
+            rgb = mix(rgb * ltmBoost, luma < 1 ? 1 - (1.0 - rgb) * (1 - ltmBoost * luma) / (1 - luma) : rgb, pow(luma, 0.5));
+        } else if (ltmBoost < 1) {
+            rgb *= ltmBoost;
+        }
+    }
+
+    // Black Level Adjustment
+    if (parameters.blacks > 0) {
+        rgb = (rgb - parameters.blacks) / (1 - parameters.blacks);
     }
 
     write_imagef(rgbImage, imageCoordinates, (float4) (rgb, 0.0));
