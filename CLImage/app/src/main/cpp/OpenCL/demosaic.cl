@@ -88,7 +88,7 @@ float2 imageGradient(read_only image2d_t inputImage, int x, int y) {
             dv += (float2) (fabs(v_left - v_right), fabs(v_up - v_down));
         }
     }
-    return 0.04 * dv; // dv / 25
+    return dv / 25;
 }
 
 kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t greenImage, int bayerPattern, float lumaVariance) {
@@ -121,7 +121,7 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
 
         float g_ave = (g_left + g_right + g_up + g_down) / 4;
 
-        float2 dv = imageGradient(rawImage, x, y);
+        float2 dv = abs(imageGradient(rawImage, x, y));
 
         // Estimate the whiteness of the pixel value and use that to weight the amount of HF correction
         float cMax = fmax(c_xy, fmax(g_ave, c2_ave));
@@ -130,24 +130,23 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
 
         // Estimate the image gradient strenght with respect to the noise
         float lumaStdDev = sqrt(lumaVariance * g_ave);
-        float gradient_strenght = smoothstep(0.25 * lumaStdDev, lumaStdDev, length(dv));
+        float gradient_strenght = smoothstep(0.25 * lumaStdDev, lumaStdDev, 2 * length(dv));
 
-        // we're doing edge directed bilinear interpolation on the green channel,
-        // which is a low pass operation (averaging), so we add some signal from the
-        // high frequencies of the observed color channel
+        float hf_gain = gradient_strenght * whiteness;
 
-        float sample_h = (g_left + g_right) / 2 + gradient_strenght * whiteness * (c_xy - (c_left + c_right) / 2) / 4;
-        float sample_v = (g_up + g_down) / 2 + gradient_strenght * whiteness * (c_xy - (c_up + c_down) / 2) / 4;
+        // Hamilton-Adams second order Laplacian HF Interpolation
 
-        // On areas with strong gradient, simply integrate in the direction of the least gradient
+        float sample_h = (g_left + g_right) / 2 + hf_gain * (2 * c_xy - (c_left + c_right)) / 4;
+        float sample_v = (g_up + g_down) / 2 + hf_gain * (2 * c_xy - (c_up + c_down)) / 4;
+        float sample_flat = g_ave + hf_gain * (4 * c_xy - (c_left + c_right + c_up + c_down)) / 8;
 
-        float high_gradient_interpolation = dv.x > dv.y ? sample_v : sample_h;
+        float direction = 2 * atan2pi(dv.y, dv.x);
+        float sample = mix(sample_v, sample_h, direction);
 
-        // Otherwise mix the two interpolations according to the gradient's angle. If the gradient is really weak just average the two directions
+        sample = mix(sample, sample_v, 1 - smoothstep(0.3 * gradient_strenght, 0.4 * gradient_strenght, direction));
+        sample = mix(sample, sample_h, smoothstep(1 - 0.4 * gradient_strenght, 1 - 0.3 * gradient_strenght, direction));
 
-        float low_gradient_interpolation = mix(sample_v, sample_h, mix(0.5, 2 * atan2pi(dv.y, dv.x), gradient_strenght));
-
-        float sample = mix(low_gradient_interpolation, high_gradient_interpolation, gradient_strenght);
+        sample = mix(sample_flat, sample, gradient_strenght);
 
         write_imagef(greenImage, imageCoordinates, sample);
     } else {
