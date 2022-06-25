@@ -116,21 +116,38 @@ float2 sobel(read_only image2d_t inputImage, int x, int y) {
     return ((float2) (valueX, valueY)) / sqrt(4.5);
 }
 
-float2 channelCorrelation(read_only image2d_t rawImage, int x, int y) {
-    // Estimate the correlation between the green and the color channel
+float2 bilateralSobel(read_only image2d_t inputImage, int x, int y, float sigma) {
+    // Sobel Bilateral Filter on a 5x5 raw patch
+    float2 sum = 0;
+    float2 weight = 0;
+    float2 gradXY = abs(sobel(inputImage, x, y));
+    for (int j = -2; j <= 2; j++) {
+        for (int i = -2; i <= 2; i++) {
+            float2 grad = abs(sobel(inputImage, x + i, y + j));
+            // Joint Bilateral Filrtering with gradient intensity as guide signal
+            float2 w = 1 - smoothstep(4 * sigma, 16 * sigma, 0.2 * (length(grad) - length(gradXY)));
+            sum += w * grad;
+            weight += w;
+        }
+    }
+    return sum / weight;
+}
 
+float2 channelCorrelation(read_only image2d_t rawImage, int x, int y) {
+    // Estimate the correlation between the green and the color channel on a 3x3 quad patch
     float2 s_gc = 0;
     float s_c = 0;
     for (int j = -1; j <= 1; j++) {
         for (int i = -1; i <= 1; i++) {
-            float c = read_imagef(rawImage, (int2)(x + 2 * i, y + 2 * j)).x;
-            float g_h = read_imagef(rawImage, (int2)(x + 2 * i + 1, y + 2 * j)).x;
-            float g_v = read_imagef(rawImage, (int2)(x + 2 * i, y + 2 * j + 1)).x;
+            int2 pos = { x + 2 * i, y + 2 * j };
+            float c = read_imagef(rawImage, pos).x;
+            float g_h = (read_imagef(rawImage, pos + (int2)(1, 0)).x + read_imagef(rawImage, pos + (int2)(-1, 0)).x) / 2;
+            float g_v = (read_imagef(rawImage, pos + (int2)(0, 1)).x + read_imagef(rawImage, pos + (int2)(0, -1)).x) / 2;
             s_c += c;
             s_gc += (float2) (c * g_h, c * g_v);
         }
     }
-    return s_gc / s_c;
+    return s_c > 0 ? s_gc / s_c : 1;
 }
 
 kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t greenImage, int bayerPattern, float lumaVariance) {
@@ -155,29 +172,23 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
         float c_up    = read_imagef(rawImage, (int2)(x, y - 2)).x;
         float c_down  = read_imagef(rawImage, (int2)(x, y + 2)).x;
 
-        float2 grad = (imageGradient(rawImage, x, y) + abs(sobel(rawImage, x, y)) / 2) / 2;
-
-        // Estimate the image gradient strenght with respect to the noise
-        float g_ave = (g_left + g_right + g_up + g_down) / 4;
-        float lumaStdDev = sqrt(lumaVariance * g_ave);
-        float gradient_strenght = smoothstep(0.25 * lumaStdDev, lumaStdDev, 2 * length(grad));
-
         // Use the inter channel correlation to modulate the HF components
         float2 corr = channelCorrelation(rawImage, x, y);
-        float hf_gain = /* gradient_strenght * */ smoothstep(0.1, 0.3, length(corr));
+        float hf_gain = smoothstep(0.1, 0.3, length(corr));
 
         // Hamilton-Adams second order Laplacian HF Interpolation
-        float sample_h = (g_left + g_right) / 2 + hf_gain * (2 * c_xy - (c_left + c_right)) / 8;
-        float sample_v = (g_up + g_down) / 2 + hf_gain * (2 * c_xy - (c_up + c_down)) / 8;
+        float sample_h = (g_left + g_right) / 2 + hf_gain * (2 * c_xy - (c_left + c_right)) / 4;
+        float sample_v = (g_up + g_down) / 2 + hf_gain * (2 * c_xy - (c_up + c_down)) / 4;
+
+        float g_ave = (g_left + g_right + g_up + g_down) / 4;
+        float lumaStdDev = sqrt(lumaVariance * g_ave);
+        float2 grad = bilateralSobel(rawImage, x, y, lumaStdDev);
 
         float direction = 2 * atan2pi(grad.y, grad.x);
         float sample = mix(sample_v, sample_h, direction);
 
-        sample = mix(sample, sample_v, 1 - smoothstep(0.2 * gradient_strenght, 0.3 * gradient_strenght, direction));
-        sample = mix(sample, sample_h, smoothstep(1 - 0.3 * gradient_strenght, 1 - 0.2 * gradient_strenght, direction));
-
-        float sample_flat = g_ave + hf_gain * (4 * c_xy - (c_left + c_right + c_up + c_down)) / 16;
-        sample = mix(sample_flat, sample, gradient_strenght);
+        sample = mix(sample, sample_v, 1 - smoothstep(0.3, 0.45, direction));
+        sample = mix(sample, sample_h, smoothstep(1 - 0.45, 1 - 0.3, direction));
 
         write_imagef(greenImage, imageCoordinates, sample);
     } else {
