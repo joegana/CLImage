@@ -136,8 +136,6 @@ inline static float smoothstep(float edge0, float edge1, float x) {
   return t * t * (3.0f - 2.0f * t);
 }
 
-void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);
-
 void interpolateGreen(const gls::image<gls::luma_pixel_16>& rawImage,
                       gls::image<gls::rgb_pixel_16>* rgbImage, BayerPattern bayerPattern);
 
@@ -156,8 +154,6 @@ gls::image<gls::rgb_pixel>::unique_ptr fastDemosaicImage(const gls::image<gls::l
 gls::Matrix<3, 3> cam_xyz_coeff(gls::Vector<3>* pre_mul, const gls::Matrix<3, 3>& cam_xyz);
 
 void colorcheck(const gls::image<gls::luma_pixel_16>& rawImage, BayerPattern bayerPattern, uint32_t black, std::array<gls::rectangle, 24> gmb_samples);
-
-void white_balance(const gls::image<gls::luma_pixel_16>& rawImage, gls::Vector<3>* wb_mul, uint32_t white, uint32_t black, BayerPattern bayerPattern);
 
 float unpackDNGMetadata(const gls::image<gls::luma_pixel_16>& rawImage,
                         gls::tiff_metadata* dng_metadata,

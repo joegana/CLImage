@@ -105,11 +105,11 @@ constant float sobelY[3][3] = {
 float2 sobel(read_only image2d_t inputImage, int x, int y) {
     float valueX = 0;
     float valueY = 0;
-    for (int j = 0; j < 3; j++) {
-        for (int i = 0; i < 3; i++) {
-            float sample = read_imagef(inputImage, (int2)(x + i - 1, y + j - 1)).x;
-            valueX += sobelX[j][i] * sample;
-            valueY += sobelY[j][i] * sample;
+    for (int j = -1; j <= 1; j++) {
+        for (int i = -1; i <= 1; i++) {
+            float sample = read_imagef(inputImage, (int2)(x + i, y + j)).x;
+            valueX += sobelX[j+1][i+1] * sample;
+            valueY += sobelY[j+1][i+1] * sample;
         }
     }
 
@@ -135,19 +135,31 @@ float2 bilateralSobel(read_only image2d_t inputImage, int x, int y, float sigma)
 
 float2 channelCorrelation(read_only image2d_t rawImage, int x, int y) {
     // Estimate the correlation between the green and the color channel on a 3x3 quad patch
-    float2 s_gc = 0;
     float s_c = 0;
+    float2 s_g = 0;
+    float s_cc = 0;
+    float2 s_gg = 0;
+    float2 s_gc = 0;
+    float N = 9;
     for (int j = -1; j <= 1; j++) {
         for (int i = -1; i <= 1; i++) {
             int2 pos = { x + 2 * i, y + 2 * j };
             float c = read_imagef(rawImage, pos).x;
-            float g_h = (read_imagef(rawImage, pos + (int2)(1, 0)).x + read_imagef(rawImage, pos + (int2)(-1, 0)).x) / 2;
-            float g_v = (read_imagef(rawImage, pos + (int2)(0, 1)).x + read_imagef(rawImage, pos + (int2)(0, -1)).x) / 2;
+            float2 g = { (read_imagef(rawImage, pos + (int2)(1, 0)).x + read_imagef(rawImage, pos + (int2)(-1, 0)).x) / 2,
+                         (read_imagef(rawImage, pos + (int2)(0, 1)).x + read_imagef(rawImage, pos + (int2)(0, -1)).x) / 2 };
+
             s_c += c;
-            s_gc += (float2) (c * g_h, c * g_v);
+            s_cc += c * c;
+            s_g += g;
+            s_gg += g * g;
+            s_gc += c * g;
         }
     }
-    return s_c > 0 ? s_gc / s_c : 1;
+    float2 cov_cg = (N * s_gc - s_c * s_g);
+    float2 var_g = (N * s_gg - s_g * s_g);
+    float2 var_c = (N * s_cc - s_c * s_c);
+
+    return var_g > 0 && var_c > 0 ? abs(cov_cg / sqrt(var_g * var_c)) : 1;
 }
 
 kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t greenImage, int bayerPattern, float lumaVariance) {
@@ -172,23 +184,37 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
         float c_up    = read_imagef(rawImage, (int2)(x, y - 2)).x;
         float c_down  = read_imagef(rawImage, (int2)(x, y + 2)).x;
 
-        // Use the inter channel correlation to modulate the HF components
-        float2 corr = channelCorrelation(rawImage, x, y);
-        float hf_gain = smoothstep(0.1, 0.3, length(corr));
-
-        // Hamilton-Adams second order Laplacian HF Interpolation
-        float sample_h = (g_left + g_right) / 2 + hf_gain * (2 * c_xy - (c_left + c_right)) / 4;
-        float sample_v = (g_up + g_down) / 2 + hf_gain * (2 * c_xy - (c_up + c_down)) / 4;
-
+        // Estimate gradient intensity and direction
         float g_ave = (g_left + g_right + g_up + g_down) / 4;
         float lumaStdDev = sqrt(lumaVariance * g_ave);
-        float2 grad = bilateralSobel(rawImage, x, y, lumaStdDev);
+        float2 gradient = bilateralSobel(rawImage, x, y, lumaStdDev);
 
-        float direction = 2 * atan2pi(grad.y, grad.x);
-        float sample = mix(sample_v, sample_h, direction);
+        float direction = 2 * atan2pi(gradient.y, gradient.x);
 
-        sample = mix(sample, sample_v, 1 - smoothstep(0.3, 0.45, direction));
-        sample = mix(sample, sample_h, smoothstep(1 - 0.45, 1 - 0.3, direction));
+        // Hamilton-Adams second order Laplacian Interpolation
+        float2 g_lf = { (g_left + g_right) / 2, (g_up + g_down) / 2 };
+        float2 g_hf = { (2 * c_xy - (c_left + c_right)) / 4, (2 * c_xy - (c_up + c_down)) / 4 };
+
+        // Estimate the pixel's "whiteness" along the deirection of the interpolation
+        float g_lf_grad = mix(g_lf.y, g_lf.x, direction);
+        float whiteness = clamp(fmin(c_xy, g_lf_grad) / fmax(c_xy, g_lf_grad), 0.0, 1.0);
+
+        // Minimum gradient threshold wrt the noise model
+        float gradient_threshold = smoothstep(2 * lumaStdDev, 8 * lumaStdDev, length(gradient));
+
+        // Modulate the HF component of the reconstructed green using the whteness and the gradient magnitude
+        float hf_gain = gradient_threshold * min(0.5 * whiteness + smoothstep(0.0, 0.3, length(gradient) / M_SQRT2_F), 1.0);
+        float2 g_est = g_lf + hf_gain * g_hf;
+
+        // Green pixel estimation
+        float sample = mix(g_est.y, g_est.x, direction);
+
+        // Bias result towards vertical and horizontal lines
+        sample = direction < 0.5 ? mix(sample, g_est.y, 1 - smoothstep(0.3 * gradient_threshold, 0.45 * gradient_threshold, direction))
+                                 : mix(sample, g_est.x, smoothstep((1 - 0.45) * gradient_threshold, (1 - 0.3) * gradient_threshold, direction));
+
+        // If the gradient is below threshold just go flat
+        sample = mix((g_est.x + g_est.y) / 2, sample, gradient_threshold);
 
         write_imagef(greenImage, imageCoordinates, sample);
     } else {

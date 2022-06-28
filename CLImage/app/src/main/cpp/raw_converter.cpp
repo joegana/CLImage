@@ -71,7 +71,8 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     NoiseModel* noiseModel = &demosaicParameters->noiseModel;
 
-    const bool high_noise_image = false; // demosaicParameters->noiseLevel > 0.6;
+    // TODO: Make this a function of the actual noise level
+    const bool high_noise_image = demosaicParameters->noiseLevel > 0.6;
 
     LOG_INFO(TAG) << "NoiseLevel: " << demosaicParameters->noiseLevel << std::endl;
 
@@ -108,10 +109,10 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     scaleRawData(_glsContext, *clRawImage, clScaledRawImage.get(), demosaicParameters->bayerPattern, demosaicParameters->scale_mul,
                  demosaicParameters->black_level / 0xffff);
 
-    interpolateGreen(_glsContext, *clScaledRawImage, clGreenImage.get(), demosaicParameters->bayerPattern, sqrt(noiseModel->rawNlf[1]));
+    interpolateGreen(_glsContext, *clScaledRawImage, clGreenImage.get(), demosaicParameters->bayerPattern, noiseModel->rawNlf[1]);
 
     interpolateRedBlue(_glsContext, *clScaledRawImage, *clGreenImage, clLinearRGBImageA.get(), demosaicParameters->bayerPattern,
-                       sqrt((noiseModel->rawNlf[0] + noiseModel->rawNlf[2]) / 2), rotate_180);
+                       (noiseModel->rawNlf[0] + noiseModel->rawNlf[2]) / 2, rotate_180);
 
     // Recover clipped highlights
     blendHighlightsImage(_glsContext, *clLinearRGBImageA, /*clip=*/ 1.0, clLinearRGBImageA.get());
@@ -130,8 +131,8 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     const auto& np = noiseModel->pyramidNlf[0];
     despeckleImage(_glsContext, *clLinearRGBImageA, { np[0], np[1], np[2] }, { np[3], np[4], np[5] }, clLinearRGBImageB.get());
 
-//    // False Color Removal
-//    // TODO: this is expensive, make it an optional stage
+    // False Color Removal
+    // TODO: this is expensive, make it an optional stage
 //    std::cout << "falseColorsRemovalImage" << std::endl;
 //    applyKernel(_glsContext, "falseColorsRemovalImage", *clLinearRGBImageB, clLinearRGBImageA.get());
 

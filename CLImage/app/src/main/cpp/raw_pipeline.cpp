@@ -98,6 +98,46 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicPlainFile(RawConverter* rawConver
 
     unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr /* &gmb_position */, /*rotate_180=*/ false);
 
+    // Minimal noise model
+    demosaicParameters.noiseModel.rawNlf = gls::Vector<4> {
+        1.8e-04, 1.0e-04, 1.6e-04, 9.0e-05
+    };
+    demosaicParameters.noiseModel.pyramidNlf = gls::Matrix<5, 6> {
+        4.5e-06, 6.8e-07, 7.0e-07, 4.5e-05, 4.1e-05, 3.6e-05,
+        7.6e-06, 1.1e-06, 1.5e-06, 2.6e-05, 2.1e-05, 2.4e-05,
+        1.7e-05, 2.1e-06, 2.9e-06, 3.2e-05, 1.0e-05, 2.3e-05,
+        4.1e-05, 3.8e-06, 5.1e-06, 9.3e-05, 1.2e-05, 4.3e-05,
+        7.0e-05, 5.0e-06, 4.7e-06, 4.0e-04, 4.5e-05, 1.3e-04,
+    };
+    demosaicParameters.noiseLevel = 0;
+    demosaicParameters.denoiseParameters = std::array<DenoiseParameters, 5> {{
+        {
+            .luma = 1,
+            .chroma = 1,
+            .sharpening = 1
+        },
+        {
+            .luma = 1,
+            .chroma = 1,
+            .sharpening = 1
+        },
+        {
+            .luma = 1,
+            .chroma = 1,
+            .sharpening = 1
+        },
+        {
+            .luma = 1,
+            .chroma = 1,
+            .sharpening = 1
+        },
+        {
+            .luma = 1,
+            .chroma = 1,
+            .sharpening = 1
+        }
+    }};
+
     return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(*inputImage, &demosaicParameters, nullptr /* &gmb_position */, /*rotate_180=*/ false));
 }
 
@@ -157,13 +197,14 @@ void processKodakSet(gls::OpenCLContext* glsContext, const std::filesystem::path
         dng_metadata.insert({ TIFFTAG_CFAPATTERN, std::vector<uint8_t>{ 1, 0, 2, 1 } });
         dng_metadata.insert({ TIFFTAG_BLACKLEVEL, std::vector<float>{ 0 } });
         dng_metadata.insert({ TIFFTAG_WHITELEVEL, std::vector<uint32_t>{ 0xffff } });
+        dng_metadata.insert({ TIFFTAG_PROFILETONECURVE, std::vector<float>{ 0, 0, 1, 1 } });
 
         auto dng_file = (input_path.parent_path() / input_path.stem()).string() + ".dng";
         bayer.write_dng_file(dng_file, /*compression=*/ gls::NONE, &dng_metadata);
 
         const auto demosaiced = demosaicPlainFile(&rawConverter, dng_file);
 
-        auto demosaiced_png_file = (input_path.parent_path() / input_path.stem()).string() + "_demosaiced.PNG";
+        auto demosaiced_png_file = (input_path.parent_path() / input_path.stem()).string() + "_demosaiced_3_corr.PNG";
         demosaiced->write_png_file(demosaiced_png_file);
     }
 }
@@ -176,6 +217,8 @@ int main(int argc, const char* argv[]) {
         RawConverter rawConverter(&glsContext);
 
         auto input_path = std::filesystem::path(argv[1]);
+
+        // processKodakSet(&glsContext, input_path);
 
         // calibrateIMX571(&rawConverter, input_path.parent_path());
         // calibrateIMX492(&rawConverter, input_path.parent_path());
@@ -199,13 +242,13 @@ int main(int argc, const char* argv[]) {
             LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
 
             // transcodeAdobeDNG(input_path);
-            const auto rgb_image = demosaicIMX571DNG(&rawConverter, input_path);
+            // const auto rgb_image = demosaicIMX571DNG(&rawConverter, input_path);
             // const auto rgb_image = demosaicSonya6400DNG(&rawConverter, input_path);
             // const auto rgb_image = demosaicCanonEOSRPDNG(&rawConverter, input_path);
             // const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
             // const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
-            // const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
-            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_wb_ltm_blacks_1.0_d.jpg", 95);
+            const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
+            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_wb_ltm_blacks_1.0_e.jpg", 95);
         }
 
 //        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;
