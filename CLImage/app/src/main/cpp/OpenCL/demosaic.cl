@@ -91,29 +91,22 @@ float2 imageGradient(read_only image2d_t inputImage, int x, int y) {
     return grad / 25;
 }
 
-constant float sobelX[3][3] = {
-    { 1,  0,  -1 },
-    { 2,  0,  -2 },
-    { 1,  0,  -1 },
-};
-constant float sobelY[3][3] = {
-    {  1,  2,  1 },
-    {  0,  0,  0 },
-    { -1, -2, -1 },
+constant float2 sobelKernel2D[3][3] = {
+    { { 1,  1 },  { 0,  2 }, { -1,  1 } },
+    { { 2,  0 },  { 0,  0 }, { -2,  0 } },
+    { { 1, -1 },  { 0, -2 }, { -1, -1 } },
 };
 
 float2 sobel(read_only image2d_t inputImage, int x, int y) {
-    float valueX = 0;
-    float valueY = 0;
+    float2 value = 0;
     for (int j = -1; j <= 1; j++) {
         for (int i = -1; i <= 1; i++) {
             float sample = read_imagef(inputImage, (int2)(x + i, y + j)).x;
-            valueX += sobelX[j+1][i+1] * sample;
-            valueY += sobelY[j+1][i+1] * sample;
+            value += sobelKernel2D[j+1][i+1] * sample;
         }
     }
 
-    return ((float2) (valueX, valueY)) / sqrt(4.5);
+    return value / sqrt(4.5);
 }
 
 float2 bilateralSobel(read_only image2d_t inputImage, int x, int y, float sigma) {
@@ -184,37 +177,43 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
         float c_up    = read_imagef(rawImage, (int2)(x, y - 2)).x;
         float c_down  = read_imagef(rawImage, (int2)(x, y + 2)).x;
 
+        float c2_top_left = read_imagef(rawImage, (int2)(x - 1, y - 1)).x;
+        float c2_top_right = read_imagef(rawImage, (int2)(x + 1, y - 1)).x;
+        float c2_bottom_left = read_imagef(rawImage, (int2)(x - 1, y + 1)).x;
+        float c2_bottom_right = read_imagef(rawImage, (int2)(x + 1, y + 1)).x;
+        float c2_ave = (c2_top_left + c2_top_right + c2_bottom_left + c2_bottom_right) / 4;
+
         // Estimate gradient intensity and direction
         float g_ave = (g_left + g_right + g_up + g_down) / 4;
         float lumaStdDev = sqrt(lumaVariance * g_ave);
         float2 gradient = bilateralSobel(rawImage, x, y, lumaStdDev);
 
-        float direction = 2 * atan2pi(gradient.y, gradient.x);
-
         // Hamilton-Adams second order Laplacian Interpolation
         float2 g_lf = { (g_left + g_right) / 2, (g_up + g_down) / 2 };
         float2 g_hf = { (2 * c_xy - (c_left + c_right)) / 4, (2 * c_xy - (c_up + c_down)) / 4 };
 
-        // Estimate the pixel's "whiteness" along the deirection of the interpolation
-        float g_lf_grad = mix(g_lf.y, g_lf.x, direction);
-        float whiteness = clamp(fmin(c_xy, g_lf_grad) / fmax(c_xy, g_lf_grad), 0.0, 1.0);
+        // Estimate the pixel's "whiteness"
+        float whiteness = clamp(min(c_xy, min(g_ave, c2_ave)) / max(c_xy, max(g_ave, c2_ave)), 0.0, 1.0);
 
         // Minimum gradient threshold wrt the noise model
-        float gradient_threshold = smoothstep(2 * lumaStdDev, 8 * lumaStdDev, length(gradient));
+        float low_gradient_threshold = smoothstep(2 * lumaStdDev, 8 * lumaStdDev, length(gradient));
 
         // Modulate the HF component of the reconstructed green using the whteness and the gradient magnitude
-        float hf_gain = gradient_threshold * min(0.5 * whiteness + smoothstep(0.0, 0.3, length(gradient) / M_SQRT2_F), 1.0);
+        float hf_gain = low_gradient_threshold * min(0.5 * whiteness + smoothstep(0.0, 0.3, length(gradient) / M_SQRT2_F), 1.0);
         float2 g_est = g_lf + hf_gain * g_hf;
+
+        // Gradient direction in [0..1]
+        float direction = 2 * atan2pi(gradient.y, gradient.x);
 
         // Green pixel estimation
         float sample = mix(g_est.y, g_est.x, direction);
 
         // Bias result towards vertical and horizontal lines
-        sample = direction < 0.5 ? mix(sample, g_est.y, 1 - smoothstep(0.3 * gradient_threshold, 0.45 * gradient_threshold, direction))
-                                 : mix(sample, g_est.x, smoothstep((1 - 0.45) * gradient_threshold, (1 - 0.3) * gradient_threshold, direction));
+        sample = direction < 0.5 ? mix(sample, g_est.y, 1 - smoothstep(0.3 * low_gradient_threshold, 0.45 * low_gradient_threshold, direction))
+                                 : mix(sample, g_est.x, smoothstep((1 - 0.45) * low_gradient_threshold, (1 - 0.3) * low_gradient_threshold, direction));
 
         // If the gradient is below threshold just go flat
-        sample = mix((g_est.x + g_est.y) / 2, sample, gradient_threshold);
+        sample = mix((g_est.x + g_est.y) / 2, sample, low_gradient_threshold);
 
         write_imagef(greenImage, imageCoordinates, sample);
     } else {
