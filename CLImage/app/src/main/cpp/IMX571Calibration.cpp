@@ -142,40 +142,41 @@ static std::pair<gls::Vector<4>, gls::Matrix<levels, 6>> nlfFromIso(const std::a
 }
 
 std::pair<float, std::array<DenoiseParameters, 5>> IMX571DenoiseParameters(int iso) {
-    const auto nlf_params = nlfFromIso<5>(NLF_IMX571, iso);
+    const float nlf_alpha = std::clamp((log2(iso) - log2(100)) / (log2(51200) - log2(100)), 0.0, 1.0);
 
-    // A reasonable denoising calibration on a fairly large range of Noise Variance values
-    const float min_green_variance = NLF_IMX571[0].rawNlf[1];
-    const float max_green_variance = NLF_IMX571[NLF_IMX571.size()-1].rawNlf[1];
-    const float nlf_green_variance = std::clamp(nlf_params.first[1], min_green_variance, max_green_variance);
-    const float nlf_alpha = log2(nlf_green_variance / min_green_variance) / log2(max_green_variance / min_green_variance);
+    std::cout << "IMX571DenoiseParameters nlf_alpha: " << nlf_alpha << ", ISO: " << iso << std::endl;
 
-    std::cout << "IMX571DenoiseParameters nlf_alpha: " << nlf_alpha << " for ISO " << iso << std::endl;
+    float lerp = std::lerp(1.0f, 2.0f, nlf_alpha);
+    float lerp_c = std::lerp(1.0f, 4.0f, nlf_alpha);
 
+    float lmult[5] = { 0.125, 0.5, 0.25, 0.125, 0.0625 };
+    float cmult[5] = { 1, 2, 2, 1, 1 };
+
+    // Bilateral
     std::array<DenoiseParameters, 5> denoiseParameters = {{
         {
-            .luma = 0.125f, // * std::lerp(1.0f, 2.0f, nlf_alpha),
-            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
+            .luma = lmult[0], // * lerp,
+            .chroma = cmult[0] * lerp_c,
             .sharpening = std::lerp(1.5f, 1.0f, nlf_alpha)
         },
         {
-            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
-            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
-            .sharpening = 1.1 // std::lerp(1.0f, 0.8f, nlf_alpha),
+            .luma = lmult[1] * lerp,
+            .chroma = cmult[1] * lerp_c,
+            .sharpening = 1.1
         },
         {
-            .luma = 0.5f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
-            .chroma = std::lerp(1.0f, 4.0f, nlf_alpha),
+            .luma = lmult[2] * lerp,
+            .chroma = cmult[2] * lerp_c,
             .sharpening = 1
         },
         {
-            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
-            .chroma = std::lerp(1.0f, 4.0f, nlf_alpha),
+            .luma = lmult[3] * lerp,
+            .chroma = cmult[3] * lerp_c,
             .sharpening = 1
         },
         {
-            .luma = 0.125f * std::lerp(1.0f, 2.0f, nlf_alpha) / 2,
-            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
+            .luma = lmult[4] * lerp,
+            .chroma = cmult[4] * lerp_c,
             .sharpening = 1
         }
     }};
@@ -221,8 +222,6 @@ gls::image<gls::rgb_pixel>::unique_ptr calibrateIMX571DNG(RawConverter* rawConve
 
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
 
-    // rotate180AndFlipHorizontal(inputImage.get());
-
     unpackDNGMetadata(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, rotate_180);
 
     // See if the ISO value is present and override
@@ -255,17 +254,6 @@ void calibrateIMX571(RawConverter* rawConverter, const std::filesystem::path& in
     std::array<CalibrationEntry, 1> calibration_files = {{
         { 100,   "2022-06-15-11-03-22-196.dng",   {2246, 803, 2734, 1762}, false },
     }};
-
-//    std::array<CalibrationEntry, 8> calibration_files = {{
-//        { 100,   "imx571-00-ms_40-iso_100_ok.dng",   {2366, 525, 2709, 1796}, false },
-//        { 200,   "imx571-01-ms_20-iso_200_ok.dng",   {2366, 525, 2709, 1796}, false },
-//        { 400,   "imx571-02-ms_10-iso_400_ok.dng",   {2366, 525, 2709, 1796}, false },
-//        { 800,   "imx571-03-ms_40-iso_800_ok.dng",   {2366, 525, 2709, 1796}, false },
-//        { 1600,  "imx571-04-ms_20-iso_1600_ok.dng",  {2366, 525, 2709, 1796}, false },
-//        { 3200,  "imx571-05-ms_10-iso_3200_ok.dng",  {2366, 525, 2709, 1796}, false },
-//        { 6400,  "imx571-06-ms_40-iso_6400_ok.dng",  {2366, 525, 2709, 1796}, false },
-//        { 10000, "imx571-07-ms_30-iso_10000_ok.dng", {2366, 525, 2709, 1796}, false },
-//    }};
 
     std::array<NoiseModel, 8> noiseModel;
 
@@ -300,11 +288,11 @@ void calibrateIMX571(RawConverter* rawConverter, const std::filesystem::path& in
 gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX571DNG(RawConverter* rawConverter, const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
         .rgbConversionParameters = {
-            .contrast = 1.05,
-            .saturation = 1.0,
+            .contrast = 1.0,
+            .saturation = 0.9,
             .toneCurveSlope = 3.5,
-            .exposureBias = 0,
-            .blacks = 0.1,
+            .exposureBias = -0.8,
+            .blacks = 0.12,
             .localToneMapping = true
         },
         .ltmParameters = {
@@ -351,12 +339,12 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicIMX571DNG(RawConverter* rawConver
     demosaicParameters.noiseLevel = denoiseParameters.first;
     demosaicParameters.denoiseParameters = denoiseParameters.second;
 
-    float exposureCompensation = 0.5 * smoothstep(0.01, 0.1, highlights);
-    if (exposureCompensation > 0) {
-        demosaicParameters.rgbConversionParameters.exposureBias = -exposureCompensation;
-        demosaicParameters.ltmParameters.shadows += 0.3 * exposureCompensation;
-        std::cout << "exposureBias: " << -exposureCompensation << std::endl;
-    }
+//    float exposureCompensation = 0.5 * smoothstep(0.01, 0.1, highlights) + 0.7;
+//    if (exposureCompensation > 0) {
+//        demosaicParameters.rgbConversionParameters.exposureBias = -exposureCompensation;
+//        demosaicParameters.ltmParameters.shadows += 0.3 * exposureCompensation;
+//        std::cout << "exposureBias: " << -exposureCompensation << std::endl;
+//    }
 
     return RawConverter::convertToRGBImage(*rawConverter->demosaicImage(inputImage, &demosaicParameters, nullptr, /*rotate_180=*/ false));
     // return RawConverter::convertToRGBImage(*rawConverter->fastDemosaicImage(inputImage, demosaicParameters));
