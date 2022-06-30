@@ -83,6 +83,7 @@ void denoiseImageGuided(gls::OpenCLContext* glsContext,
 
 void localToneMappingMask(gls::OpenCLContext* glsContext,
                           const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
+                          const gls::cl_image_2d<gls::rgba_pixel_float>& guideImage,
                           const LTMParameters& ltmParameters, const gls::Matrix<3, 3>& transform,
                           gls::cl_image_2d<gls::luma_pixel_float>* outputImage);
 

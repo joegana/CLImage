@@ -15,6 +15,8 @@
 
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 
+#define IPHONE_LENS_SHADING false
+
 enum BayerPattern {
     grbg = 0,
     gbrg = 1,
@@ -360,6 +362,13 @@ kernel void blendHighlightsImage(read_only image2d_t inputImage, float clip, wri
                          dot(itrans[1], lab[0]),
                          dot(itrans[2], lab[0])) / 3;
     }
+
+#if IPHONE_LENS_SHADING
+    float2 imageCenter = convert_float2(get_image_dim(inputImage) / 2);
+    float distance_from_center = length(convert_float2(imageCoordinates) - imageCenter) / length(imageCenter);
+    float lens_shading = 1 + 2 * distance_from_center * distance_from_center;
+    pixel *= lens_shading;
+#endif
 
     write_imagef(outputImage, imageCoordinates, (float4)(pixel, 0.0));
 }
@@ -929,7 +938,7 @@ kernel void rawRGBAToBayer(read_only image2d_t rgbaImage, write_only image2d_t r
 float4 denoiseRawRGBA(float4 rawVariance, image2d_t inputImage, int2 imageCoordinates) {
     const float4 input = read_imagef(inputImage, imageCoordinates);
 
-    float4 sigma = 0.5 * sqrt(rawVariance * input);
+    float4 sigma = 0.2 * sqrt(rawVariance * input);
 
     float4 filtered_pixel = 0;
     float4 kernel_norm = 0;
@@ -937,8 +946,8 @@ float4 denoiseRawRGBA(float4 rawVariance, image2d_t inputImage, int2 imageCoordi
         for (int x = -2; x <= 2; x++) {
             float4 inputSample = read_imagef(inputImage, imageCoordinates + (int2)(x, y));
 
-            float4 inputDiff = fabs(inputSample - input);
-            float4 sampleWeight = 1 - step(sigma, inputDiff);
+            float4 inputDiff = inputSample - input;
+            float4 sampleWeight = 1 - step(sigma, length(inputDiff));
 
             filtered_pixel += sampleWeight * inputSample;
             kernel_norm += sampleWeight;
@@ -1047,7 +1056,7 @@ constant ConvolutionParameters boxFilter5x5[9] = {
     { 0.0400, {  2.0000,  2.0000 } },
 };
 
-float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb, image2d_t inputImage,
+float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb, image2d_t inputImage, image2d_t guideImage,
                             int2 imageCoordinates, sampler_t linear_sampler, float2 inputNorm) {
     const float2 pos = convert_float2(imageCoordinates) * inputNorm;
 
@@ -1057,14 +1066,14 @@ float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb,
     float sumSq = 0;
     for (int i = 0; i < 9; i++) {
         constant ConvolutionParameters* cp = &boxFilter5x5[i];
-        float sample = cp->weight * read_imagef(inputImage, linear_sampler, pos + (cp->offset + 0.5f) * inputNorm).x;
+        float sample = cp->weight * read_imagef(guideImage, linear_sampler, pos + (cp->offset + 0.5f) * inputNorm).x;
         sum += sample;
         sumSq += sample * sample;
     }
     float mean = sum;
     float var = sumSq - sum * sum;
 
-    // TODO: This is technically wrong, we should use the full resolution guide image to generate the result
+    // Sample the input value from the high resolution image
     const float3 input = read_imagef(inputImage, linear_sampler, pos + 0.5f * inputNorm).xyz;
     const float luma = input.x;
 
@@ -1073,7 +1082,7 @@ float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb,
     float kernel_norm = 0;
     for (int i = 0; i < 9; i++) {
         constant ConvolutionParameters* cp = &boxFilter5x5[i];
-        float sample = read_imagef(inputImage, linear_sampler, pos + (cp->offset + 0.5f) * inputNorm).x;
+        float sample = read_imagef(guideImage, linear_sampler, pos + (cp->offset + 0.5f) * inputNorm).x;
         float sampleWeight = cp->weight * (1 + (sample - mean) * (luma - mean) / (var + eps));
 
         filtered_pixel += sampleWeight * sample;
@@ -1095,12 +1104,12 @@ float4 localToneMappingMask(LTMParameters *ltmParameters, Matrix3x3* ycbcr_srgb,
     return pow(illuminance, 1.0 / tonalCompression) * pow(reflectance, ltmParameters->detail) / luma;
 }
 
-kernel void localToneMappingMaskImage(read_only image2d_t inputImage, LTMParameters ltmParameters,
+kernel void localToneMappingMaskImage(read_only image2d_t inputImage, read_only image2d_t guideImage, LTMParameters ltmParameters,
                                       Matrix3x3 ycbcr_srgb, write_only image2d_t outputImage, sampler_t linear_sampler) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
     const float2 inputNorm = 1.0 / convert_float2(get_image_dim(outputImage));
 
-    float4 denoisedPixel = localToneMappingMask(&ltmParameters, &ycbcr_srgb, inputImage, imageCoordinates, linear_sampler, inputNorm);
+    float4 denoisedPixel = localToneMappingMask(&ltmParameters, &ycbcr_srgb, inputImage, guideImage, imageCoordinates, linear_sampler, inputNorm);
 
     write_imagef(outputImage, imageCoordinates, denoisedPixel);
 }
@@ -1186,7 +1195,7 @@ float4 denoiseRawRGBAGuidedCov(float4 eps, image2d_t inputImage, int2 imageCoord
 kernel void denoiseRawRGBAImage(read_only image2d_t inputImage, float4 rawVariance, write_only image2d_t denoisedImage) {
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
-    float4 denoisedPixel = denoiseRawRGBAGuidedCov(rawVariance, inputImage, imageCoordinates);
+    float4 denoisedPixel = denoiseRawRGBA(rawVariance, inputImage, imageCoordinates);
 
     write_imagef(denoisedImage, imageCoordinates, denoisedPixel);
 }
