@@ -72,7 +72,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     NoiseModel* noiseModel = &demosaicParameters->noiseModel;
 
     // TODO: Make this a function of the actual noise level
-    const bool high_noise_image = demosaicParameters->noiseLevel > 0.6;
+    const bool high_noise_image = false; // demosaicParameters->noiseLevel > 0.6;
 
     LOG_INFO(TAG) << "NoiseLevel: " << demosaicParameters->noiseLevel << std::endl;
 
@@ -99,9 +99,9 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
         bayerToRawRGBA(_glsContext, *clRawImage, rgbaRawImage.get(), demosaicParameters->bayerPattern);
 
-        despeckleRawRGBAImage(_glsContext,
-                              *rgbaRawImage,
-                              denoisedRgbaRawImage.get());
+        // denoiseRawRGBAImage(_glsContext, *rgbaRawImage, noiseModel->rawNlf, denoisedRgbaRawImage.get());
+
+        despeckleRawRGBAImage(_glsContext, *rgbaRawImage, denoisedRgbaRawImage.get());
 
         rawRGBAToBayer(_glsContext, *denoisedRgbaRawImage, clRawImage.get(), demosaicParameters->bayerPattern);
     }
@@ -149,7 +149,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     std::cout << "pyramidNlf:\n" << std::scientific << noiseModel->pyramidNlf << std::endl;
 
     if (demosaicParameters->rgbConversionParameters.localToneMapping) {
-        localToneMappingMask(_glsContext, *(pyramidalDenoise->denoisedImagePyramid[3]), demosaicParameters->ltmParameters,
+        localToneMappingMask(_glsContext, *clDenoisedImage, *(pyramidalDenoise->denoisedImagePyramid[3]), demosaicParameters->ltmParameters,
                              inverse(cam_to_ycbcr) * demosaicParameters->exposure_multiplier, ltmMaskImage.get());
     }
 
