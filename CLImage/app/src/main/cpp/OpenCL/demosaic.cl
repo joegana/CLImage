@@ -73,7 +73,7 @@ kernel void scaleRawData(read_only image2d_t rawImage, write_only image2d_t scal
     for (int c = 0; c < 4; c++) {
         int2 o = bayerOffsets[bayerPattern][c];
         write_imagef(scaledRawImage, imageCoordinates + (int2) (o.x, o.y),
-                     scaleMul[c] * (read_imagef(rawImage, imageCoordinates + (int2) (o.x, o.y)).x - blackLevel));
+                     max(scaleMul[c] * (read_imagef(rawImage, imageCoordinates + (int2) (o.x, o.y)).x - blackLevel), 0.0));
     }
 }
 
@@ -94,9 +94,9 @@ float2 imageGradient(read_only image2d_t inputImage, int x, int y) {
 }
 
 constant float2 sobelKernel2D[3][3] = {
-    { { 1,  1 },  { 0,  2 }, { -1,  1 } },
-    { { 2,  0 },  { 0,  0 }, { -2,  0 } },
-    { { 1, -1 },  { 0, -2 }, { -1, -1 } },
+    { { 1,  1 }, { 0,  2 }, { -1,  1 } },
+    { { 2,  0 }, { 0,  0 }, { -2,  0 } },
+    { { 1, -1 }, { 0, -2 }, { -1, -1 } },
 };
 
 float2 sobel(read_only image2d_t inputImage, int x, int y) {

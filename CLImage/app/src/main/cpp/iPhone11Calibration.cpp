@@ -27,88 +27,88 @@ static const std::array<NoiseModel, 8> iPhone11 = {{
     {
         { 1.5e-04, 1.9e-04, 2.3e-04, 1.5e-04 },
         {
-            2.0e-05, 1.1e-06, 2.4e-06, 1.5e-04, 3.5e-05, 3.2e-05,
-            3.2e-05, 1.8e-06, 3.8e-06, 7.1e-05, 8.7e-06, 2.2e-06,
-            4.2e-05, 2.9e-06, 5.7e-06, 6.3e-05, -5.1e-06, -1.8e-05,
-            5.6e-05, 4.0e-06, 8.6e-06, 1.6e-04, -1.0e-05, -3.6e-05,
-            9.6e-05, 1.0e-05, 1.4e-05, 2.9e-04, -4.2e-05, -7.1e-05,
+            2.0e-05, 8.3e-07, 2.1e-06, 1.4e-04, 2.4e-05, 2.0e-05,
+            3.2e-05, 1.7e-06, 3.5e-06, 7.0e-05, 7.9e-06, 1.2e-06,
+            4.2e-05, 2.2e-06, 3.3e-06, 6.7e-05, 0.0e+00, 0.0e+00,
+            5.3e-05, 2.7e-06, 3.7e-06, 1.8e-04, 0.0e+00, 0.0e+00,
+            8.9e-05, 4.5e-06, 4.8e-06, 3.3e-04, 0.0e+00, 0.0e+00,
         },
     },
     // ISO 64
     {
         { 2.7e-04, 2.7e-04, 3.7e-04, 2.4e-04 },
         {
-            2.0e-05, 1.3e-06, 2.6e-06, 2.3e-04, 6.5e-05, 6.4e-05,
-            3.1e-05, 1.9e-06, 3.8e-06, 9.0e-05, 1.9e-05, 1.5e-05,
-            4.2e-05, 2.9e-06, 5.6e-06, 6.8e-05, -2.0e-06, -1.4e-05,
-            5.5e-05, 4.0e-06, 8.5e-06, 1.7e-04, -9.1e-06, -3.5e-05,
-            9.5e-05, 1.0e-05, 1.4e-05, 2.9e-04, -4.1e-05, -6.8e-05,
+            2.0e-05, 9.3e-07, 2.1e-06, 1.8e-04, 4.4e-05, 4.3e-05,
+            3.1e-05, 1.7e-06, 3.6e-06, 8.7e-05, 1.8e-05, 1.3e-05,
+            4.1e-05, 2.6e-06, 3.8e-06, 7.2e-05, 0.0e+00, 0.0e+00,
+            5.3e-05, 2.8e-06, 3.8e-06, 1.9e-04, 0.0e+00, 0.0e+00,
+            8.9e-05, 4.5e-06, 4.6e-06, 3.3e-04, 0.0e+00, 0.0e+00,
         },
     },
     // ISO 100
     {
         { 3.2e-04, 4.6e-04, 5.9e-04, 3.7e-04 },
         {
-            2.0e-05, 1.5e-06, 2.8e-06, 2.0e-04, 7.0e-05, 7.2e-05,
-            3.0e-05, 1.9e-06, 3.8e-06, 1.0e-04, 2.7e-05, 2.5e-05,
-            4.1e-05, 2.9e-06, 5.6e-06, 7.6e-05, 1.9e-06, -8.9e-06,
-            5.5e-05, 3.9e-06, 8.4e-06, 1.7e-04, -7.7e-06, -3.3e-05,
-            9.7e-05, 1.0e-05, 1.4e-05, 2.8e-04, -4.1e-05, -6.9e-05,
+            2.0e-05, 1.1e-06, 2.3e-06, 2.5e-04, 6.6e-05, 6.8e-05,
+            3.1e-05, 1.7e-06, 3.7e-06, 1.1e-04, 2.9e-05, 2.6e-05,
+            4.1e-05, 2.7e-06, 4.4e-06, 7.8e-05, 2.9e-06, 0.0e+00,
+            5.3e-05, 2.9e-06, 3.9e-06, 1.9e-04, 0.0e+00, 0.0e+00,
+            9.1e-05, 4.6e-06, 4.8e-06, 3.2e-04, 0.0e+00, 0.0e+00,
         },
     },
     // ISO 200
     {
         { 6.6e-04, 7.0e-04, 1.0e-03, 5.9e-04 },
         {
-            2.1e-05, 2.1e-06, 3.9e-06, 3.3e-04, 1.4e-04, 1.4e-04,
-            3.0e-05, 2.2e-06, 4.2e-06, 1.4e-04, 5.9e-05, 5.8e-05,
-            4.1e-05, 3.0e-06, 5.7e-06, 9.0e-05, 1.3e-05, 2.4e-06,
-            5.6e-05, 4.2e-06, 8.6e-06, 1.8e-04, -3.3e-06, -3.0e-05,
-            1.0e-04, 1.0e-05, 1.4e-05, 2.5e-04, -3.8e-05, -7.0e-05,
+            2.1e-05, 1.6e-06, 3.2e-06, 4.2e-04, 1.3e-04, 1.3e-04,
+            3.1e-05, 2.1e-06, 4.0e-06, 1.5e-04, 6.1e-05, 6.0e-05,
+            4.1e-05, 2.9e-06, 5.3e-06, 9.0e-05, 1.4e-05, 3.9e-06,
+            5.4e-05, 3.6e-06, 4.4e-06, 2.0e-04, 1.2e-07, 0.0e+00,
+            9.8e-05, 5.3e-06, 5.0e-06, 2.8e-04, 0.0e+00, 0.0e+00,
         },
     },
     // ISO 400
     {
         { 9.2e-04, 8.8e-04, 1.4e-03, 6.9e-04 },
         {
-            2.5e-05, 4.8e-06, 8.1e-06, 6.2e-04, 2.6e-04, 2.8e-04,
-            3.1e-05, 3.5e-06, 5.6e-06, 2.3e-04, 1.1e-04, 1.3e-04,
-            4.2e-05, 3.4e-06, 6.1e-06, 1.1e-04, 2.9e-05, 2.9e-05,
-            5.6e-05, 4.2e-06, 8.7e-06, 1.8e-04, 1.7e-07, -2.3e-05,
-            9.8e-05, 1.0e-05, 1.4e-05, 2.9e-04, -3.9e-05, -6.4e-05,
+            2.6e-05, 3.3e-06, 6.4e-06, 8.1e-04, 2.3e-04, 2.6e-04,
+            3.2e-05, 3.2e-06, 5.3e-06, 2.6e-04, 1.1e-04, 1.4e-04,
+            4.2e-05, 3.2e-06, 5.9e-06, 1.1e-04, 3.0e-05, 2.9e-05,
+            5.4e-05, 3.7e-06, 5.4e-06, 2.0e-04, 2.8e-06, 0.0e+00,
+            9.2e-05, 5.0e-06, 5.0e-06, 3.3e-04, 0.0e+00, 0.0e+00,
         },
     },
     // ISO 800
     {
-        { 9.2e-04, 6.9e-04, 1.1e-03, 6.5e-04 },
+        { 9.3e-04, 6.9e-04, 1.1e-03, 6.5e-04 },
         {
-            3.8e-05, 1.4e-05, 2.1e-05, 1.2e-03, 4.9e-04, 6.0e-04,
-            3.6e-05, 7.3e-06, 1.2e-05, 3.7e-04, 2.1e-04, 2.8e-04,
-            4.4e-05, 4.6e-06, 8.2e-06, 1.5e-04, 5.9e-05, 7.8e-05,
-            5.7e-05, 4.5e-06, 9.4e-06, 1.9e-04, 7.0e-06, -9.7e-06,
-            9.2e-05, 1.0e-05, 1.5e-05, 3.3e-04, -3.8e-05, -6.4e-05,
+            4.3e-05, 1.1e-05, 1.7e-05, 1.6e-03, 3.8e-04, 4.9e-04,
+            3.8e-05, 7.1e-06, 1.2e-05, 4.3e-04, 1.9e-04, 2.6e-04,
+            4.4e-05, 4.5e-06, 8.3e-06, 1.5e-04, 5.8e-05, 7.5e-05,
+            5.5e-05, 4.0e-06, 7.8e-06, 2.0e-04, 9.5e-06, 0.0e+00,
+            8.6e-05, 4.9e-06, 5.8e-06, 3.6e-04, 0.0e+00, 0.0e+00,
         },
     },
     // ISO 1600
     {
-        { 8.7e-04, 7.5e-04, 9.9e-04, 6.9e-04 },
+        { 9.1e-04, 7.6e-04, 1.0e-03, 7.0e-04 },
         {
-            8.2e-05, 4.4e-05, 5.7e-05, 2.4e-03, 1.1e-03, 1.2e-03,
-            5.0e-05, 1.7e-05, 2.8e-05, 6.6e-04, 4.8e-04, 5.7e-04,
-            4.6e-05, 7.8e-06, 1.3e-05, 2.4e-04, 1.5e-04, 1.8e-04,
-            5.4e-05, 5.3e-06, 1.0e-05, 2.0e-04, 3.3e-05, 2.1e-05,
-            9.0e-05, 9.9e-06, 1.4e-05, 3.1e-04, -2.7e-05, -5.1e-05,
+            1.2e-04, 4.3e-05, 5.6e-05, 3.1e-03, 7.1e-04, 8.6e-04,
+            5.7e-05, 2.1e-05, 3.2e-05, 7.7e-04, 4.1e-04, 4.9e-04,
+            4.7e-05, 9.0e-06, 1.5e-05, 2.5e-04, 1.4e-04, 1.7e-04,
+            5.4e-05, 5.0e-06, 1.0e-05, 2.0e-04, 3.4e-05, 2.1e-05,
+            8.2e-05, 6.0e-06, 6.7e-06, 3.6e-04, 0.0e+00, 0.0e+00,
         },
     },
     // ISO 2500
     {
-        { 6.8e-04, 6.8e-04, 1.2e-03, 6.6e-04 },
+        { 7.7e-04, 7.0e-04, 1.3e-03, 6.8e-04 },
         {
-            1.7e-04, 9.1e-05, 1.1e-04, 3.4e-03, 1.8e-03, 2.2e-03,
-            6.8e-05, 3.1e-05, 4.7e-05, 1.1e-03, 8.3e-04, 1.0e-03,
-            5.2e-05, 1.3e-05, 2.1e-05, 3.7e-04, 2.5e-04, 3.2e-04,
-            5.6e-05, 6.9e-06, 1.3e-05, 2.6e-04, 6.0e-05, 6.0e-05,
-            9.5e-05, 1.0e-05, 1.5e-05, 3.0e-04, -1.9e-05, -4.5e-05,
+            2.7e-04, 1.0e-04, 1.3e-04, 4.0e-03, 9.0e-04, 1.3e-03,
+            9.2e-05, 4.9e-05, 6.8e-05, 1.2e-03, 6.0e-04, 7.6e-04,
+            5.8e-05, 1.8e-05, 2.7e-05, 3.5e-04, 2.1e-04, 2.7e-04,
+            5.7e-05, 7.7e-06, 1.3e-05, 2.4e-04, 5.4e-05, 5.2e-05,
+            9.0e-05, 7.6e-06, 8.8e-06, 3.4e-04, 0.0e+00, 0.0e+00,
         },
     },
 }};
@@ -140,44 +140,85 @@ std::pair<gls::Vector<4>, gls::Matrix<levels, 6>> nlfFromIsoiPhone(const std::ar
     }
 }
 
+//std::pair<float, std::array<DenoiseParameters, 5>> iPhone11DenoiseParameters(int iso, float varianceBoost) {
+//    const auto nlf_params = nlfFromIsoiPhone<5>(iPhone11, iso);
+//
+//    // A reasonable denoising calibration on a fairly large range of Noise Variance values
+//    const float min_green_variance = iPhone11[0].pyramidNlf[0][0];
+//    const float max_green_variance = iPhone11[iPhone11.size()-1].pyramidNlf[0][0];
+//    const float nlf_green_variance = std::clamp(nlf_params.second[0][0], min_green_variance, max_green_variance);
+//    const float nlf_alpha = log2(nlf_green_variance / min_green_variance + 0.1) / log2(max_green_variance / min_green_variance + 0.1);
+//
+//    std::cout << "iPhone11DenoiseParameters nlf_alpha: " << nlf_alpha << std::endl;
+//
+//    // Bilateral
+//    std::array<DenoiseParameters, 5> denoiseParameters = {{
+//        {
+//            .luma = 0.125f * std::lerp(0.1f, 4.0f, nlf_alpha),
+//            .chroma = std::lerp(2.0f, 4.0f, nlf_alpha),
+//            .sharpening = std::lerp(1.5f, 1.0f, nlf_alpha)
+//        },
+//        {
+//            .luma = 1.0f * std::lerp(0.1f, 4.0f, nlf_alpha),
+//            .chroma = std::lerp(2.0f, 4.0f, nlf_alpha),
+//            .sharpening = 1.0 // std::lerp(1.0f, 0.8f, nlf_alpha),
+//        },
+//        {
+//            .luma = 0.5f * std::lerp(0.1f, 4.0f, nlf_alpha),
+//            .chroma = std::lerp(2.0f, 4.0f, nlf_alpha),
+//            .sharpening = 1
+//        },
+//        {
+//            .luma = 0.25f * std::lerp(0.1f, 4.0f, nlf_alpha),
+//            .chroma = std::lerp(2.0f, 4.0f, nlf_alpha),
+//            .sharpening = 1
+//        },
+//        {
+//            .luma = 0.125f * std::lerp(0.1f, 4.0f, nlf_alpha),
+//            .chroma = std::lerp(1.0f, 4.0f, nlf_alpha),
+//            .sharpening = 1
+//        }
+//    }};
+//
+//    return { nlf_alpha, denoiseParameters };
+//}
+
 std::pair<float, std::array<DenoiseParameters, 5>> iPhone11DenoiseParameters(int iso, float varianceBoost) {
-    const auto nlf_params = nlfFromIsoiPhone<5>(iPhone11, iso);
+    const float nlf_alpha = std::clamp((log2(iso) - log2(32)) / (log2(6400) - log2(32)), 0.0, 1.0);
 
-    // A reasonable denoising calibration on a fairly large range of Noise Variance values
-    const float min_green_variance = iPhone11[0].pyramidNlf[0][0];
-    const float max_green_variance = iPhone11[iPhone11.size()-1].pyramidNlf[0][0];
-    const float nlf_green_variance = std::clamp(nlf_params.second[0][0], min_green_variance, max_green_variance);
-    const float nlf_alpha = log2(nlf_green_variance / min_green_variance + 0.1) / log2(max_green_variance / min_green_variance + 0.1);
+    std::cout << "iPhone11DenoiseParameters nlf_alpha: " << nlf_alpha << ", ISO: " << iso << std::endl;
 
-    float bump = 1 + 3 * std::min(smoothstep(64.0, 100.0, iso), 1 - smoothstep(800.0, 1600.0, iso));
+    float lerp = std::lerp(0.5f, 8.0f, nlf_alpha);
+    float lerp_c = std::lerp(1.0f, 8.0f, nlf_alpha);
 
-    std::cout << "iPhone11DenoiseParameters nlf_alpha: " << nlf_alpha << std::endl;
+    float lmult[5] = { 0.125, 0.5, 0.25, 0.125, 0.0625 };
+    float cmult[5] = { 1, 2, 2, 1, 1 };
 
     // Bilateral
     std::array<DenoiseParameters, 5> denoiseParameters = {{
         {
-            .luma = 0.125f * bump * std::lerp(1.0f, 4.0f, nlf_alpha),
-            .chroma = std::lerp(4.0f, 16.0f, nlf_alpha),
-            .sharpening = std::lerp(1.7f, 0.8f, nlf_alpha)
+            .luma = lmult[0] * lerp,
+            .chroma = cmult[0] * lerp_c,
+            .sharpening = std::lerp(1.5f, 1.0f, nlf_alpha)
         },
         {
-            .luma = 1.0f * std::lerp(1.0f, 4.0f, nlf_alpha),
-            .chroma = std::lerp(4.0f, 8.0f, nlf_alpha),
-            .sharpening = std::lerp(1.1f, 1.2f, nlf_alpha),
+            .luma = lmult[1] * lerp,
+            .chroma = cmult[1] * lerp_c,
+            .sharpening = 1.0
         },
         {
-            .luma = 0.5f * std::lerp(1.0f, 4.0f, nlf_alpha),
-            .chroma = std::lerp(4.0f, 4.0f, nlf_alpha),
+            .luma = lmult[2] * lerp,
+            .chroma = cmult[2] * lerp_c,
             .sharpening = 1
         },
         {
-            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha),
-            .chroma = std::lerp(4.0f, 4.0f, nlf_alpha),
+            .luma = lmult[3] * lerp,
+            .chroma = cmult[3] * lerp_c,
             .sharpening = 1
         },
         {
-            .luma = 0.125f * std::lerp(1.0f, 2.0f, nlf_alpha),
-            .chroma = std::lerp(1.0f, 4.0f, nlf_alpha),
+            .luma = lmult[4] * lerp,
+            .chroma = cmult[4] * lerp_c,
             .sharpening = 1
         }
     }};
@@ -185,12 +226,19 @@ std::pair<float, std::array<DenoiseParameters, 5>> iPhone11DenoiseParameters(int
     return { nlf_alpha, denoiseParameters };
 }
 
+
 gls::image<gls::rgb_pixel>::unique_ptr demosaiciPhone11(RawConverter* rawConverter, const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
         .rgbConversionParameters = {
-            .contrast = 1.05,
-            .saturation = 1.0,
-            .toneCurveSlope = 3.5,
+            .blacks = 0.1,
+            // .exposureBias = -0.1,
+            .localToneMapping = true
+        },
+        .ltmParameters = {
+            .guidedFilterEps = 0.01,
+            .shadows = 1.25,
+            .highlights = 1,
+            .detail = 1.0,
         }
     };
 

@@ -454,10 +454,10 @@ void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float 
                     const int y_off = patch.y + y;
                     const int x_off = patch.x + x;
                     gls::rgba_pixel_fp32 p = {
-                        (rawImage[y_off + r.y][x_off + r.x] - black_level) / white_level,
-                        (rawImage[y_off + g.y][x_off + g.x] - black_level) / white_level,
-                        (rawImage[y_off + b.y][x_off + b.x] - black_level) / white_level,
-                        (rawImage[y_off + g2.y][x_off + g2.x] - black_level) / white_level
+                        std::clamp((rawImage[y_off + r.y][x_off + r.x] - black_level) / white_level, 0.0f, 1.0f),
+                        std::clamp((rawImage[y_off + g.y][x_off + g.x] - black_level) / white_level, 0.0f, 1.0f),
+                        std::clamp((rawImage[y_off + b.y][x_off + b.x] - black_level) / white_level, 0.0f, 1.0f),
+                        std::clamp((rawImage[y_off + g2.y][x_off + g2.x] - black_level) / white_level, 0.0f, 1.0f)
                     };
 
                     avgR += p[0];
@@ -482,10 +482,10 @@ void colorCheckerRawStats(const gls::image<gls::luma_pixel_16>& rawImage, float 
                     const int y_off = patch.y + y;
                     const int x_off = patch.x + x;
                     gls::rgba_pixel_fp32 p = {
-                        (rawImage[y_off + r.y][x_off + r.x] - black_level) / white_level,
-                        (rawImage[y_off + g.y][x_off + g.x] - black_level) / white_level,
-                        (rawImage[y_off + b.y][x_off + b.x] - black_level) / white_level,
-                        (rawImage[y_off + g2.y][x_off + g2.x] - black_level) / white_level
+                        std::clamp((rawImage[y_off + r.y][x_off + r.x] - black_level) / white_level, 0.0f, 1.0f),
+                        std::clamp((rawImage[y_off + g.y][x_off + g.x] - black_level) / white_level, 0.0f, 1.0f),
+                        std::clamp((rawImage[y_off + b.y][x_off + b.x] - black_level) / white_level, 0.0f, 1.0f),
+                        std::clamp((rawImage[y_off + g2.y][x_off + g2.x] - black_level) / white_level, 0.0f, 1.0f)
                     };
 
                     red_channel[(patch.y + y)/2][(patch.x + x)/2] = 0xffff * p.red;
