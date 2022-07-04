@@ -104,6 +104,29 @@ void fasteDebayer(gls::OpenCLContext* glsContext,
            rawImage.getImage2D(), rgbImage->getImage2D(), bayerPattern);
 }
 
+void rawNoiseStatistics(gls::OpenCLContext* glsContext,
+                        const gls::cl_image_2d<gls::luma_pixel_float>& rawImage,
+                        BayerPattern bayerPattern,
+                        gls::cl_image_2d<gls::rgba_pixel_float>* meanImage,
+                        gls::cl_image_2d<gls::rgba_pixel_float>* varImage) {
+    assert(rawImage.width == 2 * meanImage->width && rawImage.height == 2 * meanImage->height);
+    assert(varImage->width == meanImage->width && varImage->height == meanImage->height);
+
+    // Load the shader source
+    const auto program = glsContext->loadProgram("demosaic");
+
+    // Bind the kernel parameters
+    auto kernel = cl::KernelFunctor<cl::Image2D,  // rawImage
+                                    int,          // bayerPattern
+                                    cl::Image2D,  // meanImage
+                                    cl::Image2D   // varImage
+                                    >(program, "rawNoiseStatistics");
+
+    // Schedule the kernel on the GPU
+    kernel(gls::OpenCLContext::buildEnqueueArgs(meanImage->width, meanImage->height),
+           rawImage.getImage2D(), bayerPattern, meanImage->getImage2D(), varImage->getImage2D());
+}
+
 template <typename T1, typename T2>
 void applyKernel(gls::OpenCLContext* glsContext, const std::string& kernelName,
                  const gls::cl_image_2d<T1>& inputImage,
@@ -268,7 +291,8 @@ void despeckleImage(gls::OpenCLContext* glsContext,
 
 void denoiseImage(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                  const gls::Vector<3>& var_a, const gls::Vector<3>& var_b, bool tight,
+                  const gls::Vector<3>& var_a, const gls::Vector<3>& var_b,
+                  float chromaBoost, float gradientBoost,
                   gls::cl_image_2d<gls::rgba_pixel_float>* outputImage) {
     // Load the shader source
     const auto program = glsContext->loadProgram("demosaic");
@@ -277,15 +301,17 @@ void denoiseImage(gls::OpenCLContext* glsContext,
     auto kernel = cl::KernelFunctor<cl::Image2D,  // inputImage
                                     cl_float3,    // var_a
                                     cl_float3,    // var_b
+                                    float,        // chromaBoost
+                                    float,        // gradientBoost
                                     cl::Image2D   // outputImage
-                                    >(program, tight ? "denoiseImageTight" : "denoiseImageLoose");
+                                    >(program, "denoiseImage");
 
     cl_float3 cl_var_a = { var_a[0], var_a[1], var_a[2] };
     cl_float3 cl_var_b = { var_b[0], var_b[1], var_b[2] };
 
     // Schedule the kernel on the GPU
     kernel(gls::OpenCLContext::buildEnqueueArgs(outputImage->width, outputImage->height),
-           inputImage.getImage2D(), cl_var_a, cl_var_b, outputImage->getImage2D());
+           inputImage.getImage2D(), cl_var_a, cl_var_b, chromaBoost, gradientBoost, outputImage->getImage2D());
 }
 
 void denoiseImageGuided(gls::OpenCLContext* glsContext,
@@ -344,7 +370,7 @@ void localToneMappingMask(gls::OpenCLContext* glsContext,
 }
 
 void bayerToRawRGBA(gls::OpenCLContext* glsContext,
-                    const gls::cl_image_2d<gls::luma_pixel_16>& rawImage,
+                    const gls::cl_image_2d<gls::luma_pixel_float>& rawImage,
                     gls::cl_image_2d<gls::rgba_pixel_float>* rgbaImage,
                     BayerPattern bayerPattern) {
     assert(rawImage.width == 2 * rgbaImage->width && rawImage.height == 2 * rgbaImage->height);
@@ -365,7 +391,7 @@ void bayerToRawRGBA(gls::OpenCLContext* glsContext,
 
 void rawRGBAToBayer(gls::OpenCLContext* glsContext,
                     const gls::cl_image_2d<gls::rgba_pixel_float>& rgbaImage,
-                    gls::cl_image_2d<gls::luma_pixel_16>* rawImage,
+                    gls::cl_image_2d<gls::luma_pixel_float>* rawImage,
                     BayerPattern bayerPattern) {
     assert(rawImage->width == 2 * rgbaImage.width && rawImage->height == 2 * rgbaImage.height);
 

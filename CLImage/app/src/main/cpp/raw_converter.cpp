@@ -72,7 +72,7 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
     NoiseModel* noiseModel = &demosaicParameters->noiseModel;
 
     // TODO: Make this a function of the actual noise level
-    const bool high_noise_image = false; // demosaicParameters->noiseLevel > 0.6;
+    const bool high_noise_image = demosaicParameters->noiseLevel > 0.6;
 
     LOG_INFO(TAG) << "NoiseLevel: " << demosaicParameters->noiseLevel << std::endl;
 
@@ -94,20 +94,25 @@ gls::cl_image_2d<gls::rgba_pixel>* RawConverter::demosaicImage(const gls::image<
 
     // --- Image Demosaicing ---
 
+    scaleRawData(_glsContext, *clRawImage, clScaledRawImage.get(), demosaicParameters->bayerPattern, demosaicParameters->scale_mul,
+                 demosaicParameters->black_level / 0xffff);
+
+    const auto rawNLF = computeRawNoiseStatistics(_glsContext, *clScaledRawImage, demosaicParameters->bayerPattern);
+    demosaicParameters->noiseModel.rawNlf = gls::Vector<4> { rawNLF[4], rawNLF[5], rawNLF[6], rawNLF[7] };
+
     if (high_noise_image) {
         std::cout << "denoiseRawRGBAImage" << std::endl;
 
-        bayerToRawRGBA(_glsContext, *clRawImage, rgbaRawImage.get(), demosaicParameters->bayerPattern);
-
-        // denoiseRawRGBAImage(_glsContext, *rgbaRawImage, noiseModel->rawNlf, denoisedRgbaRawImage.get());
+        bayerToRawRGBA(_glsContext, *clScaledRawImage, rgbaRawImage.get(), demosaicParameters->bayerPattern);
 
         despeckleRawRGBAImage(_glsContext, *rgbaRawImage, denoisedRgbaRawImage.get());
 
-        rawRGBAToBayer(_glsContext, *denoisedRgbaRawImage, clRawImage.get(), demosaicParameters->bayerPattern);
-    }
+        denoiseRawRGBAImage(_glsContext, *denoisedRgbaRawImage, noiseModel->rawNlf, rgbaRawImage.get());
 
-    scaleRawData(_glsContext, *clRawImage, clScaledRawImage.get(), demosaicParameters->bayerPattern, demosaicParameters->scale_mul,
-                 demosaicParameters->black_level / 0xffff);
+        // applyKernel(_glsContext, "medianFilterImage3x3x4", *rgbaRawImage, denoisedRgbaRawImage.get());
+
+        rawRGBAToBayer(_glsContext, *rgbaRawImage, clScaledRawImage.get(), demosaicParameters->bayerPattern);
+    }
 
     interpolateGreen(_glsContext, *clScaledRawImage, clGreenImage.get(), demosaicParameters->bayerPattern, noiseModel->rawNlf[1]);
 

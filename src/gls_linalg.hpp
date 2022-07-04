@@ -205,6 +205,15 @@ inline Vector<N, baseT> abs(const Vector<N, baseT>& v) {
     return result;
 }
 
+// Vector - Scalar Division
+template <size_t N, typename baseT>
+inline Vector<N, baseT> max(const Vector<N, baseT>& v, baseT a) {
+    auto itv = v.begin();
+    Vector<N, baseT> result;
+    std::for_each(result.begin(), result.end(), [&a, &itv](baseT &r){ r = std::max(*itv++, a); });
+    return result;
+}
+
 // ---- Matrix Type ----
 
 template <size_t N, size_t M, typename baseT>

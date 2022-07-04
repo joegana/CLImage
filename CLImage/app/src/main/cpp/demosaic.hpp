@@ -30,9 +30,11 @@ enum BayerPattern {
 extern const char* BayerPatternName[4];
 
 typedef struct DenoiseParameters {
-    float luma;
-    float chroma;
-    float sharpening;
+    float luma = 1.0;
+    float chroma = 1.0;
+    float chromaBoost = 1.0;
+    float gradientBoost = 1.0;
+    float sharpening = 1.0;
 } DenoiseParameters;
 
 typedef struct RGBConversionParameters {

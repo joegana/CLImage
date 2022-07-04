@@ -140,92 +140,58 @@ std::pair<gls::Vector<4>, gls::Matrix<levels, 6>> nlfFromIsoiPhone(const std::ar
     }
 }
 
-//std::pair<float, std::array<DenoiseParameters, 5>> iPhone11DenoiseParameters(int iso, float varianceBoost) {
-//    const auto nlf_params = nlfFromIsoiPhone<5>(iPhone11, iso);
-//
-//    // A reasonable denoising calibration on a fairly large range of Noise Variance values
-//    const float min_green_variance = iPhone11[0].pyramidNlf[0][0];
-//    const float max_green_variance = iPhone11[iPhone11.size()-1].pyramidNlf[0][0];
-//    const float nlf_green_variance = std::clamp(nlf_params.second[0][0], min_green_variance, max_green_variance);
-//    const float nlf_alpha = log2(nlf_green_variance / min_green_variance + 0.1) / log2(max_green_variance / min_green_variance + 0.1);
-//
-//    std::cout << "iPhone11DenoiseParameters nlf_alpha: " << nlf_alpha << std::endl;
-//
-//    // Bilateral
-//    std::array<DenoiseParameters, 5> denoiseParameters = {{
-//        {
-//            .luma = 0.125f * std::lerp(0.1f, 4.0f, nlf_alpha),
-//            .chroma = std::lerp(2.0f, 4.0f, nlf_alpha),
-//            .sharpening = std::lerp(1.5f, 1.0f, nlf_alpha)
-//        },
-//        {
-//            .luma = 1.0f * std::lerp(0.1f, 4.0f, nlf_alpha),
-//            .chroma = std::lerp(2.0f, 4.0f, nlf_alpha),
-//            .sharpening = 1.0 // std::lerp(1.0f, 0.8f, nlf_alpha),
-//        },
-//        {
-//            .luma = 0.5f * std::lerp(0.1f, 4.0f, nlf_alpha),
-//            .chroma = std::lerp(2.0f, 4.0f, nlf_alpha),
-//            .sharpening = 1
-//        },
-//        {
-//            .luma = 0.25f * std::lerp(0.1f, 4.0f, nlf_alpha),
-//            .chroma = std::lerp(2.0f, 4.0f, nlf_alpha),
-//            .sharpening = 1
-//        },
-//        {
-//            .luma = 0.125f * std::lerp(0.1f, 4.0f, nlf_alpha),
-//            .chroma = std::lerp(1.0f, 4.0f, nlf_alpha),
-//            .sharpening = 1
-//        }
-//    }};
-//
-//    return { nlf_alpha, denoiseParameters };
-//}
-
-std::pair<float, std::array<DenoiseParameters, 5>> iPhone11DenoiseParameters(int iso, float varianceBoost) {
-    const float nlf_alpha = std::clamp((log2(iso) - log2(32)) / (log2(6400) - log2(32)), 0.0, 1.0);
+std::pair<float, std::array<DenoiseParameters, 5>> iPhone11DenoiseParameters(int iso) {
+    const float nlf_alpha = std::clamp((log2(iso) - log2(100)) / (log2(6400) - log2(100)), 0.0, 1.0);
 
     std::cout << "iPhone11DenoiseParameters nlf_alpha: " << nlf_alpha << ", ISO: " << iso << std::endl;
 
-    float lerp = std::lerp(0.5f, 8.0f, nlf_alpha);
-    float lerp_c = std::lerp(1.0f, 8.0f, nlf_alpha);
+    float lerp = std::lerp(0.125f, 2.0f, nlf_alpha);
+    float lerp_c = std::lerp(1.0f, 2.0f, nlf_alpha);
 
-    float lmult[5] = { 0.125, 0.5, 0.25, 0.125, 0.0625 };
-    float cmult[5] = { 1, 2, 2, 1, 1 };
+    // Default Good
+    float lmult[5] = { 0.25, 2, 0.5, 0.25, 0.125 };
+    float cmult[5] = { 1, 1, 1, 1, 1 };
 
-    // Bilateral
     std::array<DenoiseParameters, 5> denoiseParameters = {{
         {
             .luma = lmult[0] * lerp,
             .chroma = cmult[0] * lerp_c,
+            .chromaBoost = 4,
+            .gradientBoost = 2,
             .sharpening = std::lerp(1.5f, 1.0f, nlf_alpha)
         },
         {
             .luma = lmult[1] * lerp,
             .chroma = cmult[1] * lerp_c,
-            .sharpening = 1.0
+            .chromaBoost = 4,
+            .gradientBoost = 2,
+            .sharpening = 1.1
         },
         {
             .luma = lmult[2] * lerp,
             .chroma = cmult[2] * lerp_c,
+            .chromaBoost = 4,
+            .gradientBoost = 2,
             .sharpening = 1
         },
         {
             .luma = lmult[3] * lerp,
             .chroma = cmult[3] * lerp_c,
+            .chromaBoost = 4,
+            .gradientBoost = 2,
             .sharpening = 1
         },
         {
             .luma = lmult[4] * lerp,
             .chroma = cmult[4] * lerp_c,
+            .chromaBoost = 4,
+            .gradientBoost = 2,
             .sharpening = 1
         }
     }};
 
     return { nlf_alpha, denoiseParameters };
 }
-
 
 gls::image<gls::rgb_pixel>::unique_ptr demosaiciPhone11(RawConverter* rawConverter, const std::filesystem::path& input_path) {
     DemosaicParameters demosaicParameters = {
@@ -245,14 +211,14 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaiciPhone11(RawConverter* rawConvert
     gls::tiff_metadata dng_metadata, exif_metadata;
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
 
-    float exposure_multiplier = unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr /* &gmb_position */, /*rotate_180=*/ false);
+    unpackDNGMetadata(*inputImage, &dng_metadata, &demosaicParameters, /*auto_white_balance=*/ false, nullptr /* &gmb_position */, /*rotate_180=*/ false);
 
     const auto iso = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS)[0];
 
     std::cout << "EXIF ISO: " << iso << std::endl;
 
     const auto nlfParams = nlfFromIsoiPhone<5>(iPhone11, iso);
-    const auto denoiseParameters = iPhone11DenoiseParameters(iso, exposure_multiplier);
+    const auto denoiseParameters = iPhone11DenoiseParameters(iso);
     demosaicParameters.noiseModel.rawNlf = nlfParams.first;
     demosaicParameters.noiseModel.pyramidNlf = nlfParams.second;
     demosaicParameters.noiseLevel = denoiseParameters.first;
@@ -268,7 +234,7 @@ gls::image<gls::rgb_pixel>::unique_ptr calibrateiPhone11(RawConverter* rawConver
     gls::tiff_metadata dng_metadata, exif_metadata;
     const auto inputImage = gls::image<gls::luma_pixel_16>::read_dng_file(input_path.string(), &dng_metadata, &exif_metadata);
 
-    float exposure_multiplier = unpackDNGMetadata(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, /*rotate_180=*/ false);
+    unpackDNGMetadata(*inputImage, &dng_metadata, demosaicParameters, /*auto_white_balance=*/ false, &gmb_position, /*rotate_180=*/ false);
 
     // See if the ISO value is present and override
     const auto exifIsoSpeedRatings = getVector<uint16_t>(exif_metadata, EXIFTAG_ISOSPEEDRATINGS);
@@ -276,7 +242,7 @@ gls::image<gls::rgb_pixel>::unique_ptr calibrateiPhone11(RawConverter* rawConver
         iso = exifIsoSpeedRatings[0];
     }
 
-    const auto denoiseParameters = iPhone11DenoiseParameters(iso, exposure_multiplier);
+    const auto denoiseParameters = iPhone11DenoiseParameters(iso);
     demosaicParameters->noiseLevel = denoiseParameters.first;
     demosaicParameters->denoiseParameters = denoiseParameters.second;
 

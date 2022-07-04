@@ -145,7 +145,7 @@ static const std::array<NoiseModel, 11> Sonya6400 = {{
 
 template <int levels>
 static std::pair<gls::Vector<4>, gls::Matrix<levels, 6>> nlfFromIso(const std::array<NoiseModel, 11>& NLFData, int iso) {
-    iso = std::clamp(iso, 100, 50000);
+    iso = std::clamp(iso, 100, 102400);
     if (iso >= 100 && iso < 200) {
         float a = (iso - 100) / 100;
         return std::pair(lerpRawNLF(NLFData[0].rawNlf, NLFData[1].rawNlf, a), lerpNLF<levels>(NLFData[0].pyramidNlf, NLFData[1].pyramidNlf, a));
@@ -180,73 +180,54 @@ static std::pair<gls::Vector<4>, gls::Matrix<levels, 6>> nlfFromIso(const std::a
 }
 
 std::pair<float, std::array<DenoiseParameters, 5>> Sonya6400DenoiseParameters(int iso) {
-    const float nlf_alpha = std::clamp((log2(iso) - log2(100)) / (log2(51200) - log2(100)), 0.0, 1.0);
+    const float nlf_alpha = std::clamp((log2(iso) - log2(100)) / (log2(102400) - log2(100)), 0.0, 1.0);
 
     std::cout << "Sonya6400DenoiseParameters nlf_alpha: " << nlf_alpha << ", ISO: " << iso << std::endl;
 
-    float lerp = std::lerp(0.5f, 4.0f, nlf_alpha);
-    float lerp_c = std::lerp(1.0f, 4.0f, nlf_alpha);
+    float lerp = std::lerp(0.125f, 1.2f, nlf_alpha);
+    float lerp_c = std::lerp(0.5f, 2.0f, nlf_alpha);
 
-    float lmult[5] = { 0.125, 0.5, 0.25, 0.125, 0.0625 };
-    float cmult[5] = { 1, 2, 2, 1, 1 };
+    // Default Good
+    float lmult[5] = { 0.25, 2, 0.5, 0.25, 0.125 };
+    float cmult[5] = { 1, 1, 1, 1, 1 };
 
-    // Bilateral
     std::array<DenoiseParameters, 5> denoiseParameters = {{
         {
             .luma = lmult[0] * lerp,
             .chroma = cmult[0] * lerp_c,
+            .chromaBoost = 4,
+            .gradientBoost = 2,
             .sharpening = std::lerp(1.5f, 1.0f, nlf_alpha)
         },
         {
             .luma = lmult[1] * lerp,
             .chroma = cmult[1] * lerp_c,
+            .chromaBoost = 4,
+            .gradientBoost = 2,
             .sharpening = 1.1
         },
         {
             .luma = lmult[2] * lerp,
             .chroma = cmult[2] * lerp_c,
+            .chromaBoost = 4,
+            .gradientBoost = 2,
             .sharpening = 1
         },
         {
             .luma = lmult[3] * lerp,
             .chroma = cmult[3] * lerp_c,
+            .chromaBoost = 4,
+            .gradientBoost = 2,
             .sharpening = 1
         },
         {
             .luma = lmult[4] * lerp,
             .chroma = cmult[4] * lerp_c,
+            .chromaBoost = 4,
+            .gradientBoost = 2,
             .sharpening = 1
         }
     }};
-
-//    // A7RIV
-//    std::array<DenoiseParameters, 5> denoiseParameters = {{
-//        {
-//            .luma = 0.125f * std::lerp(1.0f, 4.0f, nlf_alpha),
-//            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
-//            .sharpening = std::lerp(1.5f, 1.0f, nlf_alpha)
-//        },
-//        {
-//            .luma = 1.0f * std::lerp(1.0f, 4.0f, nlf_alpha),
-//            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
-//            .sharpening = std::lerp(1.2f, 0.8f, nlf_alpha),
-//        },
-//        {
-//            .luma = 0.5f * std::lerp(1.0f, 2.0f, nlf_alpha),
-//            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
-//            .sharpening = 1
-//        },
-//        {
-//            .luma = 0.25f * std::lerp(1.0f, 2.0f, nlf_alpha),
-//            .chroma = std::lerp(1.0f, 8.0f, nlf_alpha),
-//            .sharpening = 1
-//        },
-//        {
-//            .luma = 0.125f * std::lerp(1.0f, 2.0f, nlf_alpha),
-//            .chroma = std::lerp(1.0f, 4.0f, nlf_alpha),
-//            .sharpening = 1
-//        }
-//    }};
 
     return { nlf_alpha, denoiseParameters };
 }

@@ -46,6 +46,12 @@ void fasteDebayer(gls::OpenCLContext* glsContext,
                   gls::cl_image_2d<gls::rgba_pixel_float>* rgbImage,
                   BayerPattern bayerPattern);
 
+void rawNoiseStatistics(gls::OpenCLContext* glsContext,
+                        const gls::cl_image_2d<gls::luma_pixel_float>& rawImage,
+                        BayerPattern bayerPattern,
+                        gls::cl_image_2d<gls::rgba_pixel_float>* meanImage,
+                        gls::cl_image_2d<gls::rgba_pixel_float>* varImage);
+
 template <typename T>
 void resampleImage(gls::OpenCLContext* glsContext, const std::string& kernelName,
                    const gls::cl_image_2d<T>& inputImage, gls::cl_image_2d<T>* outputImage);
@@ -73,7 +79,8 @@ void despeckleImage(gls::OpenCLContext* glsContext,
 
 void denoiseImage(gls::OpenCLContext* glsContext,
                   const gls::cl_image_2d<gls::rgba_pixel_float>& inputImage,
-                  const gls::Vector<3>& var_a, const gls::Vector<3>& var_b, bool tight,
+                  const gls::Vector<3>& var_a, const gls::Vector<3>& var_b,
+                  float chromaBoost, float gradientBoost,
                   gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
 
 void denoiseImageGuided(gls::OpenCLContext* glsContext,
@@ -93,13 +100,13 @@ void denoiseLumaImage(gls::OpenCLContext* glsContext,
                       gls::cl_image_2d<gls::rgba_pixel_float>* outputImage);
 
 void bayerToRawRGBA(gls::OpenCLContext* glsContext,
-                    const gls::cl_image_2d<gls::luma_pixel_16>& rawImage,
+                    const gls::cl_image_2d<gls::luma_pixel_float>& rawImage,
                     gls::cl_image_2d<gls::rgba_pixel_float>* rgbaImage,
                     BayerPattern bayerPattern);
 
 void rawRGBAToBayer(gls::OpenCLContext* glsContext,
                     const gls::cl_image_2d<gls::rgba_pixel_float>& rgbaImage,
-                    gls::cl_image_2d<gls::luma_pixel_16>* rawImage,
+                    gls::cl_image_2d<gls::luma_pixel_float>* rawImage,
                     BayerPattern bayerPattern);
 
 void denoiseRawRGBAImage(gls::OpenCLContext* glsContext,
