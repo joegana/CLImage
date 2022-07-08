@@ -182,8 +182,8 @@ gls::Vector<6> computeNoiseStatistics(gls::OpenCLContext* glsContext, const gls:
     });
 
     // Linear regression on pixel statistics to extract a linear noise model: nlf = A + B * Y
-    auto nlfB = max((N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x), 0.0);
-    auto nlfA = max((s_y - nlfB * s_x) / N, 0.0);
+    auto nlfB = max((N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x), 1e-8);
+    auto nlfA = max((s_y - nlfB * s_x) / N, 1e-8);
 
     // Estimate regression mean square error
     gls::DVector<3> err2 = {{ 0, 0, 0 }};
@@ -197,10 +197,10 @@ gls::Vector<6> computeNoiseStatistics(gls::OpenCLContext* glsContext, const gls:
             err2 += diff * diff;
         }
     });
-    err2 /= N;
+    err2 = sqrt(err2 / N);
 
-    std::cout << "RAW NLF A: " << std::setprecision(4) << std::scientific << nlfA << ", B: " << nlfB << ", err2: " << err2
-              << " on " << std::setprecision(1) << std::fixed << 100 * N / (image.width * image.height) << "% pixels"<< std::endl;
+//    std::cout << "Pyramid NLF A: " << std::setprecision(4) << std::scientific << nlfA << ", B: " << nlfB << ", err2: " << err2
+//              << " on " << std::setprecision(1) << std::fixed << 100 * N / (image.width * image.height) << "% pixels"<< std::endl;
 
     // Redo the statistics collection limiting the sample to pixels that fit well the linear model
     s_x = {{ 0, 0, 0 }};
@@ -228,15 +228,15 @@ gls::Vector<6> computeNoiseStatistics(gls::OpenCLContext* glsContext, const gls:
             }
         }
     });
-    newErr2 /= N;
+    newErr2 = sqrt(newErr2 / N);
 
     // Estimate the new regression parameters
-    nlfB = max((N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x), 0.0);
-    nlfA = max((s_y - nlfB * s_x) / N, 0.0);
+    nlfB = max((N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x), 1e-8);
+    nlfA = max((s_y - nlfB * s_x) / N, 1e-8);
 
-    assert(err2[0] > newErr2[0] && err2[1] > newErr2[1] && err2[2] > newErr2[2]);
+    assert(err2[0] >= newErr2[0] && err2[1] >= newErr2[1] && err2[2] >= newErr2[2]);
 
-    std::cout << "RAW NLF A: " << std::setprecision(4) << std::scientific << nlfA << ", B: " << nlfB << ", err2: " << newErr2
+    std::cout << "Pyramid NLF A: " << std::setprecision(4) << std::scientific << nlfA << ", B: " << nlfB << ", err2: " << newErr2
               << " on " << std::setprecision(1) << std::fixed << 100 * N / (image.width * image.height) << "% pixels"<< std::endl;
 
     noiseStats.unmapImage(noiseStatsCpu);
@@ -285,8 +285,8 @@ gls::Vector<8> computeRawNoiseStatistics(gls::OpenCLContext* glsContext, const g
     });
 
     // Linear regression on pixel statistics to extract a linear noise model: nlf = A + B * Y
-    auto nlfB = (N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x);
-    auto nlfA = (s_y - nlfB * s_x) / N;
+    auto nlfB = max((N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x), 1e-8);
+    auto nlfA = max((s_y - nlfB * s_x) / N, 1e-8);
 
     // Estimate regression mean square error
     gls::DVector<4> err2 = {{ 0, 0, 0, 0 }};
@@ -301,10 +301,10 @@ gls::Vector<8> computeRawNoiseStatistics(gls::OpenCLContext* glsContext, const g
             err2 += diff * diff;
         }
     });
-    err2 /= N;
+    err2 = sqrt(err2 / N);
 
-    std::cout << "RAW NLF A: " << std::setprecision(4) << std::scientific << nlfA << ", B: " << nlfB << ", err2: " << err2
-              << " on " << std::setprecision(1) << std::fixed << 100 * N / (rawImage.width * rawImage.height) << "% pixels"<< std::endl;
+//    std::cout << "RAW NLF A: " << std::setprecision(4) << std::scientific << nlfA << ", B: " << nlfB << ", err2: " << err2
+//              << " on " << std::setprecision(1) << std::fixed << 100 * N / (rawImage.width * rawImage.height) << "% pixels"<< std::endl;
 
     // Redo the statistics collection limiting the sample to pixels that fit well the linear model
     s_x = {{ 0, 0, 0, 0 }};
@@ -333,13 +333,13 @@ gls::Vector<8> computeRawNoiseStatistics(gls::OpenCLContext* glsContext, const g
             }
         }
     });
-    newErr2 /= N;
+    newErr2 = sqrt(newErr2 / N);
 
     // Estimate the new regression parameters
-    nlfB = (N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x);
-    nlfA = (s_y - nlfB * s_x) / N;
+    nlfB = max((N * s_xy - s_x * s_y) / (N * s_xx - s_x * s_x), 1e-8);
+    nlfA = max((s_y - nlfB * s_x) / N, 1e-8);
 
-    assert(err2[0] > newErr2[0] && err2[1] > newErr2[1] && err2[2] > newErr2[2] && err2[3] > newErr2[3]);
+    assert(err2[0] >= newErr2[0] && err2[1] >= newErr2[1] && err2[2] >= newErr2[2] && err2[3] >= newErr2[3]);
 
     std::cout << "RAW NLF A: " << std::setprecision(4) << std::scientific << nlfA << ", B: " << nlfB << ", err2: " << newErr2
               << " on " << std::setprecision(1) << std::fixed << 100 * N / (rawImage.width * rawImage.height) << "% pixels"<< std::endl;

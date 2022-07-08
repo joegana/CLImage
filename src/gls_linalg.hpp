@@ -89,7 +89,35 @@ struct Vector : public std::array<baseT, N> {
 };
 
 template <size_t N>
-struct DVector : public Vector<N, double> { };
+struct DVector : public Vector<N, double> {
+    DVector() { }
+
+    DVector(const double(&il)[N]) {
+        std::copy(il, il + N, this->begin());
+    }
+
+    DVector(const std::vector<double>& v) {
+        assert(v.size() == N);
+        std::copy(v.begin(), v.end(), this->begin());
+    }
+
+    DVector(const std::array<double, N>& v) {
+        assert(v.size() == N);
+        std::copy(v.begin(), v.end(), this->begin());
+    }
+
+    DVector(std::initializer_list<double> list) {
+        assert(list.size() == N);
+        std::copy(list.begin(), list.end(), this->begin());
+    }
+
+    template<size_t P, size_t Q>
+    requires (P * Q == N)
+    DVector(const Matrix<P, Q>& m) {
+        const auto ms = m.span();
+        std::copy(ms.begin(), ms.end(), this->begin());
+    }
+};
 
 // Vector - Vector Addition (component-wise)
 template <size_t N, typename baseT>
@@ -205,12 +233,30 @@ inline Vector<N, baseT> abs(const Vector<N, baseT>& v) {
     return result;
 }
 
-// Vector - Scalar Division
+// Vector - Scalar Max
 template <size_t N, typename baseT>
 inline Vector<N, baseT> max(const Vector<N, baseT>& v, baseT a) {
     auto itv = v.begin();
     Vector<N, baseT> result;
     std::for_each(result.begin(), result.end(), [&a, &itv](baseT &r){ r = std::max(*itv++, a); });
+    return result;
+}
+
+// Vector - Scalar Min
+template <size_t N, typename baseT>
+inline Vector<N, baseT> min(const Vector<N, baseT>& v, baseT a) {
+    auto itv = v.begin();
+    Vector<N, baseT> result;
+    std::for_each(result.begin(), result.end(), [&a, &itv](baseT &r){ r = std::min(*itv++, a); });
+    return result;
+}
+
+// Vector - Square Root
+template <size_t N, typename baseT>
+inline Vector<N, baseT> sqrt(const Vector<N, baseT>& v) {
+    auto itv = v.begin();
+    Vector<N, baseT> result;
+    std::for_each(result.begin(), result.end(), [&itv](baseT &r){ r = sqrtf(*itv++); });
     return result;
 }
 

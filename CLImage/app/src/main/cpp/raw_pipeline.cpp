@@ -100,40 +100,44 @@ gls::image<gls::rgb_pixel>::unique_ptr demosaicPlainFile(RawConverter* rawConver
 
     // Minimal noise model
     demosaicParameters.noiseModel.rawNlf = gls::Vector<4> {
-        1.8e-04, 1.0e-04, 1.6e-04, 9.0e-05
+        2.8482e-04, 3.6848e-04, 3.3079e-04, 3.2821e-04
     };
     demosaicParameters.noiseModel.pyramidNlf = gls::Matrix<5, 6> {
-        4.5e-06, 6.8e-07, 7.0e-07, 4.5e-05, 4.1e-05, 3.6e-05,
-        7.6e-06, 1.1e-06, 1.5e-06, 2.6e-05, 2.1e-05, 2.4e-05,
-        1.7e-05, 2.1e-06, 2.9e-06, 3.2e-05, 1.0e-05, 2.3e-05,
-        4.1e-05, 3.8e-06, 5.1e-06, 9.3e-05, 1.2e-05, 4.3e-05,
-        7.0e-05, 5.0e-06, 4.7e-06, 4.0e-04, 4.5e-05, 1.3e-04,
+        2.1e-04, 1.0e-08, 8.2e-06, 2.6e-04, 3.9e-05, 9.0e-06,
+        1.6e-04, 1.0e-08, 1.6e-06, 6.1e-04, 1.8e-04, 6.1e-05,
+        2.5e-04, 1.0e-08, 1.0e-08, 6.0e-04, 3.6e-04, 1.3e-04,
+        4.2e-04, 1.0e-08, 1.0e-08, 4.2e-04, 8.8e-04, 3.4e-04,
+        3.0e-04, 1.0e-08, 1.0e-08, 1.0e-03, 1.8e-03, 4.2e-04,
     };
-    demosaicParameters.noiseLevel = 0;
+
+    // Minimal noise model
+    float lmult[5] = { 0.125, 0.125, 0.125, 0.125, 0.125 };
+    float cmult[5] = { 0.125, 0.125, 0.125, 0.125, 0.125 };
+
     demosaicParameters.denoiseParameters = std::array<DenoiseParameters, 5> {{
         {
-            .luma = 1,
-            .chroma = 1,
+            .luma = lmult[0],
+            .chroma = cmult[0],
             .sharpening = 1
         },
         {
-            .luma = 1,
-            .chroma = 1,
+            .luma = lmult[1],
+            .chroma = cmult[1],
             .sharpening = 1
         },
         {
-            .luma = 1,
-            .chroma = 1,
+            .luma = lmult[2],
+            .chroma = cmult[2],
             .sharpening = 1
         },
         {
-            .luma = 1,
-            .chroma = 1,
+            .luma = lmult[3],
+            .chroma = cmult[3],
             .sharpening = 1
         },
         {
-            .luma = 1,
-            .chroma = 1,
+            .luma = lmult[4],
+            .chroma = cmult[4],
             .sharpening = 1
         }
     }};
@@ -204,7 +208,7 @@ void processKodakSet(gls::OpenCLContext* glsContext, const std::filesystem::path
 
         const auto demosaiced = demosaicPlainFile(&rawConverter, dng_file);
 
-        auto demosaiced_png_file = (input_path.parent_path() / input_path.stem()).string() + "_demosaiced_3_corr.PNG";
+        auto demosaiced_png_file = (input_path.parent_path() / input_path.stem()).string() + "_demosaiced_5_corr.PNG";
         demosaiced->write_png_file(demosaiced_png_file);
     }
 }
@@ -248,7 +252,7 @@ int main(int argc, const char* argv[]) {
             // const auto rgb_image = demosaiciPhone11(&rawConverter, input_path);
             // const auto rgb_image = demosaicRicohGRIII2DNG(&rawConverter, input_path);
             // const auto rgb_image = demosaicLeicaQ2DNG(&rawConverter, input_path);
-            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_wb_ltm_blacks_1.0_p.jpg", 95);
+            rgb_image->write_jpeg_file((input_path.parent_path() / input_path.stem()).string() + "_rgb_wb_ltm_blacks_1.0_q.jpg", 95);
         }
 
 //        LOG_INFO(TAG) << "Processing: " << input_path.filename() << std::endl;

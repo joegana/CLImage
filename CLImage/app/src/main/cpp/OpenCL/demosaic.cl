@@ -120,7 +120,7 @@ float2 bilateralSobel(read_only image2d_t inputImage, int x, int y, float sigma)
         for (int i = -2; i <= 2; i++) {
             float2 grad = abs(sobel(inputImage, x + i, y + j));
             // Joint Bilateral Filrtering with gradient intensity as guide signal
-            float2 w = 1 - smoothstep(4 * sigma, 16 * sigma, 0.2 * (length(grad) - length(gradXY)));
+            float2 w = 1 - smoothstep(4 * sigma, 16 * sigma, 0.05 * abs(length(grad) - length(gradXY)));
             sum += w * grad;
             weight += w;
         }
@@ -158,6 +158,9 @@ float2 channelCorrelation(read_only image2d_t rawImage, int x, int y) {
 }
 
 kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t greenImage, int bayerPattern, float lumaVariance) {
+    // Minimal luma variance for interpolation tunung
+    lumaVariance = max(lumaVariance, 1e-4);
+
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
     const int x = imageCoordinates.x;
@@ -198,7 +201,7 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
         float whiteness = clamp(min(c_xy, min(g_ave, c2_ave)) / max(c_xy, max(g_ave, c2_ave)), 0.0, 1.0);
 
         // Minimum gradient threshold wrt the noise model
-        float low_gradient_threshold = smoothstep(2 * lumaStdDev, 8 * lumaStdDev, length(gradient));
+        float low_gradient_threshold = smoothstep(lumaStdDev, 4 * lumaStdDev, length(gradient));
 
         // Modulate the HF component of the reconstructed green using the whteness and the gradient magnitude
         float hf_gain = low_gradient_threshold * min(0.5 * whiteness + smoothstep(0.0, 0.3, length(gradient) / M_SQRT2_F), 1.0);
@@ -207,15 +210,15 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
         // Gradient direction in [0..1]
         float direction = 2 * atan2pi(gradient.y, gradient.x);
 
-        // Green pixel estimation
-        float sample = mix(g_est.y, g_est.x, direction);
-
         // Bias result towards vertical and horizontal lines
-        sample = direction < 0.5 ? mix(sample, g_est.y, 1 - smoothstep(0.3 * low_gradient_threshold, 0.45 * low_gradient_threshold, direction))
-                                 : mix(sample, g_est.x, smoothstep((1 - 0.45) * low_gradient_threshold, (1 - 0.3) * low_gradient_threshold, direction));
+        direction = direction < 0.5 ? mix(direction, 0, 1 - smoothstep(0.3 * low_gradient_threshold, 0.45 * low_gradient_threshold, direction))
+                                    : mix(direction, 1, smoothstep((1 - 0.45) * low_gradient_threshold, (1 - 0.3) * low_gradient_threshold, direction));
 
         // If the gradient is below threshold just go flat
-        sample = mix((g_est.x + g_est.y) / 2, sample, low_gradient_threshold);
+        direction = mix(0.5, direction, low_gradient_threshold);
+
+        // Green pixel estimation
+        float sample = mix(g_est.y, g_est.x, direction);
 
         write_imagef(greenImage, imageCoordinates, sample);
     } else {
@@ -226,6 +229,9 @@ kernel void interpolateGreen(read_only image2d_t rawImage, write_only image2d_t 
 kernel void interpolateRedBlue(read_only image2d_t rawImage, read_only image2d_t greenImage,
                                write_only image2d_t rgbImage, int bayerPattern, float chromaVariance,
                                int rotate_180) {
+    // Minimal luma variance for interpolation tunung
+    chromaVariance = max(chromaVariance, 1e-6);
+
     const int2 imageCoordinates = (int2) (get_global_id(0), get_global_id(1));
 
     const int x = imageCoordinates.x;
@@ -851,11 +857,11 @@ kernel void downsampleImage(read_only image2d_t inputImage, write_only image2d_t
 
     // Sub-Pixel Sampling Location
     const float2 s = 0.5 * input_norm;
-    float3 outputPixel = read_imagef(inputImage, linear_sampler, input_pos + (float2)(-s.x, -s.y)).xyz;
-    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)( s.x, -s.y)).xyz;
-    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)(-s.x,  s.y)).xyz;
-    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)( s.x,  s.y)).xyz;
-    write_imagef(outputImage, output_pos, (float4) (0.25 * outputPixel, 0.0));
+    float4 outputPixel = read_imagef(inputImage, linear_sampler, input_pos + (float2)(-s.x, -s.y));
+    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)( s.x, -s.y));
+    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)(-s.x,  s.y));
+    outputPixel +=       read_imagef(inputImage, linear_sampler, input_pos + (float2)( s.x,  s.y));
+    write_imagef(outputImage, output_pos, 0.25 * outputPixel);
 }
 
 kernel void reassembleImage(read_only image2d_t inputImageDenoised0, read_only image2d_t inputImage1,
@@ -865,11 +871,11 @@ kernel void reassembleImage(read_only image2d_t inputImageDenoised0, read_only i
     const float2 inputNorm = 1.0 / convert_float2(get_image_dim(outputImage));
     const float2 input_pos = (convert_float2(output_pos) + 0.5) * inputNorm;
 
-    float3 inputPixelDenoised0 = read_imagef(inputImageDenoised0, output_pos).xyz;
-    float3 inputPixel1 = read_imagef(inputImage1, linear_sampler, input_pos).xyz;
-    float3 inputPixelDenoised1 = read_imagef(inputImageDenoised1, linear_sampler, input_pos).xyz;
+    float4 inputPixelDenoised0 = read_imagef(inputImageDenoised0, output_pos);
+    float4 inputPixel1 = read_imagef(inputImage1, linear_sampler, input_pos);
+    float4 inputPixelDenoised1 = read_imagef(inputImageDenoised1, linear_sampler, input_pos);
 
-    float3 denoisedPixel = inputPixelDenoised0 - (inputPixel1 - inputPixelDenoised1);
+    float4 denoisedPixel = inputPixelDenoised0 - (inputPixel1 - inputPixelDenoised1);
 
     if (sharpening > 1.0) {
         float dx = (read_imagef(inputImageDenoised1, linear_sampler, input_pos + (float2)(1, 0) * inputNorm).x -
@@ -886,7 +892,7 @@ kernel void reassembleImage(read_only image2d_t inputImageDenoised0, read_only i
 
     denoisedPixel.x = mix(inputPixelDenoised1.x, denoisedPixel.x, sharpening);
 
-    write_imagef(outputImage, output_pos, (float4) (denoisedPixel, 0.0));
+    write_imagef(outputImage, output_pos, denoisedPixel);
 }
 
 kernel void bayerToRawRGBA(read_only image2d_t rawImage, write_only image2d_t rgbaImage, int bayerPattern) {

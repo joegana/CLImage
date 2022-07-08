@@ -149,6 +149,9 @@ static void readTiffImageData(TIFF *tif, int width, int height, int tiff_bitsper
             } else if (tiff_bitspersample == 16) {
                 process_tiff_strip(/* tiff_bitspersample=*/ 16, tiff_samplesperpixel, row,
                                    /*strip_width=*/ width, /*strip_height=*/ nrow, /*crop_x=*/ 0, /*crop_y=*/ 0, tiffbuf);
+            } else if (tiff_bitspersample == 8) {
+                process_tiff_strip(/* tiff_bitspersample=*/ 8, tiff_samplesperpixel, row,
+                                   /*strip_width=*/ width, /*strip_height=*/ nrow, /*crop_x=*/ 0, /*crop_y=*/ 0, tiffbuf);
             } else {
                 throw std::runtime_error("tiff_bitspersample " + std::to_string(tiff_bitspersample) + " not supported.");
             }
