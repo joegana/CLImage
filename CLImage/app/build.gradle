@@ -22,7 +22,7 @@ android {
 
     defaultConfig {
         applicationId "com.glassimaging.climage"
-        minSdk 30
+        minSdk 27
         targetSdk 31
         versionCode 1
         versionName "1.0"
